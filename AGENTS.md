@@ -61,13 +61,50 @@ Every feature goes through these phases **in order**:
 
 Before any work begins, create an isolated git worktree for the feature.
 
-`Bash
-# From the main repo root
-git worktree add ../worktrees/<slug> -b feat/<slug>
-cd ../worktrees/<slug>
-`
+**Worktree Strategy:**
+- Every feature runs in its own git worktree, isolated from the main checkout
+- Worktrees live in a sibling directory: `../english-app-worktrees/`
+- All file operations, git commands, and tests run inside the worktree
+- **Never run commands from the main repo after worktree is created**
 
-All work for the feature happens inside this worktree.
+**Setup steps:**
+
+1. **Resolve paths dynamically** (run once at workflow start):
+   ```bash
+   # Get absolute path to main repo
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   
+   # Compute worktrees base directory (sibling to main repo)
+   WORKTREES_BASE=$(dirname "$REPO_ROOT")/english-app-worktrees
+   
+   # Create base directory if it doesn't exist
+   mkdir -p "$WORKTREES_BASE"
+   ```
+
+2. **Create the worktree** (from main repo, only once):
+   ```bash
+   # Pull latest main
+   git -C "$REPO_ROOT" fetch origin
+   git -C "$REPO_ROOT" checkout main && git -C "$REPO_ROOT" pull
+   
+   # Create worktree with feature branch
+   git -C "$REPO_ROOT" worktree add "$WORKTREES_BASE/<slug>" -b feat/<slug>
+   
+   # Set worktree path for all subsequent operations
+   WORKTREE_PATH="$WORKTREES_BASE/<slug>"
+   ```
+
+3. **Verify the worktree**:
+   ```bash
+   git -C "$WORKTREE_PATH" status
+   # Should show: On branch feat/<slug>, nothing to commit, working tree clean
+   ```
+
+**CRITICAL: From this point forward, ALL work happens inside `$WORKTREE_PATH`.**
+- All file reads/writes use absolute paths inside `$WORKTREE_PATH`
+- All git commands use `git -C "$WORKTREE_PATH"` syntax
+- All test/build commands run with `$WORKTREE_PATH` as working directory
+- Never `cd` back to `$REPO_ROOT` during the feature workflow
 
 ---
 
@@ -110,9 +147,14 @@ esearch/<slug>.md and commit it.
 - References (official docs, repos, articles)
 
 **Agent actions:**
-1. Create research/<slug>.md with the required content
-2. Commit: git commit -m "research(<slug>): add research document"
-3. Push and open a **draft PR** titled: [<FEATURE-ID>] <Feature Name>
+1. Create `$WORKTREE_PATH/research/<slug>.md` with the required content
+2. Commit and push from worktree:
+   ```bash
+   git -C "$WORKTREE_PATH" add research/<slug>.md
+   git -C "$WORKTREE_PATH" commit -m "research(<slug>): add research document"
+   git -C "$WORKTREE_PATH" push -u origin feat/<slug>
+   ```
+3. Open a **draft PR** titled: [<FEATURE-ID>] <Feature Name>
 4. PR description must say: "Research complete. Awaiting human review before planning."
 5. Wait for human to review. Human will say: "looks good, make the plan" or give feedback.
 
@@ -164,11 +206,15 @@ What pytest tests will validate this feature as complete:
 `
 
 **Agent actions:**
-1. Create plan/<slug>.md in the same worktree
-2. Commit: git commit -m "plan(<slug>): add implementation plan"
-3. Push to the open PR.
-4. Update PR description: "Plan added. Awaiting human review before implementation."
-5. Wait. Human will review and say "implement it" or give feedback.
+1. Create `$WORKTREE_PATH/plan/<slug>.md` in the same worktree
+2. Commit and push from worktree:
+   ```bash
+   git -C "$WORKTREE_PATH" add plan/<slug>.md
+   git -C "$WORKTREE_PATH" commit -m "plan(<slug>): add implementation plan"
+   git -C "$WORKTREE_PATH" push
+   ```
+3. Update PR description: "Plan added. Awaiting human review before implementation."
+4. Wait. Human will review and say "implement it" or give feedback.
 
 ---
 
@@ -177,17 +223,25 @@ What pytest tests will validate this feature as complete:
 Triggered by human saying: "implement it" or "go ahead".
 
 **Agent actions:**
-1. Work inside the existing worktree (already set up).
+1. Work inside the existing worktree (already set up in Phase 0).
 2. Follow the plan steps in order.
 3. Commit after each logical step:
-   git commit -m "feat(<slug>): <what was done in this step>"
-4. Before the final commit, run all tests:
-   `Bash
-   cd backend && uv run pytest
-   `
+   ```bash
+   git -C "$WORKTREE_PATH" add <files>
+   git -C "$WORKTREE_PATH" commit -m "feat(<slug>): <what was done in this step>"
+   git -C "$WORKTREE_PATH" push
+   ```
+4. Before the final commit, run all tests from worktree:
+   ```bash
+   cd "$WORKTREE_PATH/backend" && uv run pytest
+   ```
 5. If tests pass, final commit:
-   git commit -m "feat(<slug>): implementation complete, all tests passing"
-6. Push. Convert the PR from **draft to ready for review**.
+   ```bash
+   git -C "$WORKTREE_PATH" add -A
+   git -C "$WORKTREE_PATH" commit -m "feat(<slug>): implementation complete, all tests passing"
+   git -C "$WORKTREE_PATH" push
+   ```
+6. Convert the PR from **draft to ready for review**.
 7. Update PR description with: summary of what was implemented + test results.
 
 **Rules during implementation:**
@@ -206,11 +260,11 @@ Triggered by human saying: "implement it" or "go ahead".
   worktree, commits, and pushes.
 - Once the human approves and merges:
 
-`Bash
-# Cleanup worktree after merge
-git worktree remove ../worktrees/<slug>
-git branch -d feat/<slug>
-`
+```bash
+# Cleanup worktree after merge (run from anywhere)
+git -C "$REPO_ROOT" worktree remove "$WORKTREES_BASE/<slug>"
+git -C "$REPO_ROOT" branch -d feat/<slug>
+```
 
 ---
 
@@ -252,27 +306,41 @@ feat(deepgram-stt-provider): implementation complete, all tests passing
 
 ## Worktree Commands Reference
 
-`Bash
+```bash
+# Setup: Resolve paths dynamically (do once per feature)
+REPO_ROOT=$(git rev-parse --show-toplevel)
+WORKTREES_BASE=$(dirname "$REPO_ROOT")/english-app-worktrees
+mkdir -p "$WORKTREES_BASE"
+
 # Create worktree for a new feature
-git worktree add ../worktrees/<slug> -b feat/<slug>
+git -C "$REPO_ROOT" worktree add "$WORKTREES_BASE/<slug>" -b feat/<slug>
+WORKTREE_PATH="$WORKTREES_BASE/<slug>"
 
 # List all active worktrees
 git worktree list
 
-# Remove after merge
-git worktree remove ../worktrees/<slug>
-git branch -d feat/<slug>
-`
+# Work inside the worktree (all git commands use -C)
+git -C "$WORKTREE_PATH" status
+git -C "$WORKTREE_PATH" add <files>
+git -C "$WORKTREE_PATH" commit -m "message"
+git -C "$WORKTREE_PATH" push
 
-Worktrees are created in ../worktrees/ (outside the main repo folder).
+# Remove after merge
+git -C "$REPO_ROOT" worktree remove "$WORKTREES_BASE/<slug>"
+git -C "$REPO_ROOT" branch -d feat/<slug>
+```
+
+**Worktrees are created in `../english-app-worktrees/` (sibling to main repo).**
+
+**Key principle**: Use `git -C "$WORKTREE_PATH"` for all git commands to be explicit about the working directory. Never rely on `cd` alone.
 
 ---
 
 ## Backend Commands Reference
 
-`Bash
+```bash
 # Install dependencies (first time or after pyproject.toml changes)
-cd backend
+cd "$WORKTREE_PATH/backend"
 uv sync
 
 # Run the API server
@@ -283,7 +351,9 @@ uv run pytest
 
 # Run a specific test file
 uv run pytest tests/test_stt.py -v
-`
+```
+
+**All backend commands run from `$WORKTREE_PATH/backend` directory.**
 
 ---
 
