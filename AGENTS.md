@@ -33,6 +33,54 @@ All agents (GitHub Copilot, Claude, OpenAI Codex, and others) must follow this w
 
 ---
 
+## Handling Blockers and Problems
+
+**CRITICAL RULE: When you encounter a blocker, error, or problem that prevents you from continuing, you MUST:**
+
+1. **STOP immediately** - do not try alternative solutions without human approval
+2. **COMMIT and PUSH** what exists so far (if anything was done)
+3. **EXPLICITLY NOTIFY the human** with a clear message like:
+
+   > "❌ BLOCKER ENCOUNTERED
+   >
+   > **Problem:** [exact error or issue]
+   >
+   > **What I tried:** [command/action that failed]
+   >
+   > **What's needed to proceed:** [missing tool, auth, permission, etc.]
+   >
+   > **Options to resolve:**
+   > 1. [Option 1]
+   > 2. [Option 2]
+   > 3. [Option 3]
+   >
+   > How would you like to proceed?"
+
+4. **WAIT for human response** - do not assume what they want
+
+**Examples of blockers that require human notification:**
+- Missing authentication (GitHub, API keys, etc.)
+- Missing tools or dependencies (not installed, wrong version)
+- Permission errors (file system, git, etc.)
+- Ambiguous requirements (multiple valid approaches)
+- External service failures (API down, network issues)
+- Test failures that require architectural decisions
+- Conflicts with existing code that require human judgment
+
+**What NOT to do:**
+- ❌ Try to work around the problem silently
+- ❌ Skip steps without notifying
+- ❌ Present options after the fact as if work was done
+- ❌ Assume what the human wants without asking
+
+**What TO do:**
+- ✅ Be explicit about what's blocking you
+- ✅ Provide clear options with trade-offs
+- ✅ Wait for human decision before proceeding
+- ✅ Save progress (commit/push) before waiting
+
+---
+
 ## Feature Lifecycle
 
 Every feature goes through these phases **in order**:
@@ -73,10 +121,10 @@ Before any work begins, create an isolated git worktree for the feature.
    ```bash
    # Get absolute path to main repo
    REPO_ROOT=$(git rev-parse --show-toplevel)
-   
+
    # Compute worktrees base directory (sibling to main repo)
    WORKTREES_BASE=$(dirname "$REPO_ROOT")/english-app-worktrees
-   
+
    # Create base directory if it doesn't exist
    mkdir -p "$WORKTREES_BASE"
    ```
@@ -86,10 +134,10 @@ Before any work begins, create an isolated git worktree for the feature.
    # Pull latest main
    git -C "$REPO_ROOT" fetch origin
    git -C "$REPO_ROOT" checkout main && git -C "$REPO_ROOT" pull
-   
+
    # Create worktree with feature branch
    git -C "$REPO_ROOT" worktree add "$WORKTREES_BASE/<slug>" -b feat/<slug>
-   
+
    # Set worktree path for all subsequent operations
    WORKTREE_PATH="$WORKTREES_BASE/<slug>"
    ```
@@ -136,7 +184,7 @@ If you skip research, state explicitly in the PR description **why research was 
 
 ## Phase 2: Research (when required)
 
-Create 
+Create
 esearch/<slug>.md and commit it.
 
 **research/<slug>.md must include:**
