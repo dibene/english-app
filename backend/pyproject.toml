@@ -37,6 +37,7 @@ strict = true
 ignore_missing_imports = true
 warn_return_any = true
 warn_unused_configs = true
+disallow_untyped_decorators = false
 
 [tool.pylint.messages_control]
 max-line-length = 100
