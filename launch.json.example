@@ -1,0 +1,61 @@
+{
+    // VSCode Debug Configuration for FastAPI Backend
+    //
+    // SETUP INSTRUCTIONS:
+    // 1. Copy this file to .vscode/launch.json:
+    //    mkdir -p .vscode && cp launch.json.example .vscode/launch.json
+    //
+    // 2. Make sure Python extension is installed in VSCode
+    //
+    // 3. Open the Debug panel (Ctrl+Shift+D) and select "Python Debugger: FastAPI"
+    //
+    // 4. Press F5 or click the green play button to start debugging
+    //
+    // The debugger will:
+    // - Start the FastAPI server with auto-reload enabled
+    // - Allow you to set breakpoints in your Python code
+    // - Show variable values and call stacks
+    // - Automatically restart on file changes
+    //
+    // IMPORTANT: The working directory (cwd) is set to "backend/"
+    // so Python can correctly resolve imports like "from api.main import app"
+
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Configuration name shown in VSCode debug dropdown
+            "name": "Python Debugger: FastAPI",
+
+            // Use debugpy (Python debugger)
+            "type": "debugpy",
+
+            // Launch a new process (as opposed to "attach" to existing)
+            "request": "launch",
+
+            // Run uvicorn as a module (like: python -m uvicorn)
+            "module": "uvicorn",
+
+            // Arguments passed to uvicorn:
+            // - api.main:app -> import app from backend/api/main.py
+            // - --reload -> auto-restart on file changes
+            "args": [
+                "api.main:app",
+                "--reload"
+            ],
+
+            // Enable Jinja2 template debugging (useful for future templating)
+            "jinja": true,
+
+            // Set working directory to backend/ so imports work correctly
+            // ${workspaceFolder} = the root of your workspace (where .git is)
+            "cwd": "${workspaceFolder}/backend",
+
+            // Optional: Set environment variables for debugging
+            // Uncomment and customize as needed:
+            // "env": {
+            //     "ENV": "development",
+            //     "LOG_LEVEL": "DEBUG"
+            // }
+        }
+    ]
+}
