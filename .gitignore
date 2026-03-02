@@ -1,1 +1,16 @@
+# Env files
+.env
+
+# VSCode
 .vscode/
+
+# frontend
+node_modules/
+
+# backend
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
