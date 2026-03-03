@@ -24,5 +24,5 @@ repos:
     rev: v1.19.1
     hooks:
       - id: mypy
-        additional_dependencies: [pydantic>=2.0, pydantic-settings>=2.0, fastapi>=0.100]
-        args: [--ignore-missing-imports, --strict, --no-strict-optional]
+        additional_dependencies: [pydantic>=2.0, pydantic-settings>=2.0, fastapi>=0.100, pytest>=7.0]
+        args: [--ignore-missing-imports, --strict, --no-strict-optional, --no-warn-unused-ignores]

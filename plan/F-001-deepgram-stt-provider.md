@@ -99,10 +99,12 @@ from core.models.transcription import TranscriptionResult
 
 class SpeechToTextProvider(ABC):
     @abstractmethod
-    async def transcribe(self, audio_bytes: bytes) -> TranscriptionResult:
+    def transcribe(self, audio_bytes: bytes) -> TranscriptionResult:
         """Transcribe audio bytes to text with word-level confidence."""
         ...
 ```
+
+> **Why sync:** The Deepgram SDK v6 is fully synchronous. Wrapping it in `asyncio.to_thread()` would add complexity with no benefit. FastAPI routes that call this should be defined as `def` (not `async def`) so FastAPI runs them in a threadpool automatically.
 
 ### Deepgram Implementation (`providers/deepgram_stt.py`)
 

@@ -21,3 +21,7 @@ htmlcov/
 *.egg-info/
 dist/
 build/
+
+# Generated audio fixtures (regenerate with: uv run python tests/fixtures/generate_fixtures.py)
+backend/tests/fixtures/*.wav
+backend/tests/fixtures/*.mp3
