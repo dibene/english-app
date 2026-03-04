@@ -4,7 +4,7 @@ Run explicitly with:
     uv run pytest -m live -v
 
 These tests require:
-- DEEPGRAM_API_KEY set in backend/.env
+- DEEPGRAM_API_KEY set in the environment (or in backend/.env, loaded externally)
 - Audio fixture files in tests/fixtures/ (generate with generate_fixtures.py)
 - Network access to api.deepgram.com
 
@@ -15,11 +15,8 @@ import os
 from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
 
 from providers.deepgram_stt import DeepgramSTTProvider
-
-load_dotenv(Path(__file__).parent.parent / ".env")
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
