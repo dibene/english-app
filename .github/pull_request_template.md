@@ -104,16 +104,61 @@ Replace with actual feature ID and name, e.g.:
 
 ---
 
-## Manual Testing
-<!-- Describe how to manually test this feature -->
+## How to Test
 
-### Testing Steps
-1.
-2.
-3.
+> **Agents must fill this section completely before marking a PR as ready for review.**
 
-### Expected Results
--
+### Setup
+
+```bash
+# 1. Checkout the branch
+git fetch origin
+git checkout feat/<slug>
+
+# 2. Install all dependencies (including dev)
+cd backend
+uv sync
+
+# 3. Copy or symlink your .env (must contain required API keys)
+cp /path/to/your/.env .env
+```
+
+### Generate fixtures (if applicable)
+<!-- Remove this block if the feature has no generated fixtures -->
+```bash
+# Run from backend/
+uv run python tests/fixtures/generate_fixtures.py
+```
+
+### Run unit tests (no external services required)
+
+```bash
+cd backend
+uv run pytest
+```
+
+Expected output:
+```
+# Paste expected output here
+```
+
+### Run live tests (requires API keys + network)
+<!-- Remove this block if the feature has no live tests -->
+```bash
+cd backend
+uv run pytest -m live -v
+```
+
+Expected output:
+```
+# Paste expected output here
+```
+
+### Required environment variables
+<!-- List every env var needed to run the tests -->
+| Variable | Required for | Where to get it |
+|----------|-------------|-----------------|
+| `DEEPGRAM_API_KEY` | live tests | Deepgram console |
 
 ---
 
