@@ -92,9 +92,16 @@ git -C "$WORKTREE_PATH" commit -m "feat(<slug>): <step description>"
 git -C "$WORKTREE_PATH" push
 gh pr ready <number> --repo dibene/english-app
 
-# Cleanup after merge
+# Remove worktree immediately after PR is ready — human reviews via git checkout
 git -C "$REPO_ROOT" worktree remove "$WORKTREES_BASE/<slug>"
-git -C "$REPO_ROOT" branch -d feat/<slug>
+
+# Human reviews by checking out the branch normally:
+# git fetch origin && git checkout feat/<slug>
+# cd backend && uv sync && uv run pytest && uv run pytest -m live
+
+# Cleanup after merge
+git fetch --prune
+git branch -d feat/<slug>
 ```
 
 ## Plan file naming convention
