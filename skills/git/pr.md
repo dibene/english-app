@@ -29,22 +29,29 @@ gh pr ready <number> --repo dibene/english-app
 
 ## Edit PR body/title
 
-`gh pr edit` produces a "Projects classic deprecated" GraphQL warning on stderr with exit code 1,
-even when the edit succeeds. `2>/dev/null || true` suppresses it but also **silently swallows real errors**
-(auth failure, wrong PR number, network error).
+`gh pr edit` is broken for this repo — the "Projects (classic) deprecated" GraphQL error
+causes it to fail silently (exit code 1, **body not updated**). Do not use it.
 
-Correct pattern — suppress only the known warning, then verify the edit worked:
+**Use the REST API instead:**
 
 ```bash
-# Edit (suppress only the known warning line)
-gh pr edit <number> --repo dibene/english-app \
-  --body "new body" 2>&1 | grep -v "Projects (classic)"
+# Store body in a variable (heredoc avoids escaping issues)
+PR_BODY=$(cat <<'BODY'
+Your PR description here...
+BODY
+)
 
-# Immediately verify — if this prints the expected content, the edit worked
-gh pr view <number> --repo dibene/english-app --json body --jq '.body | .[0:120]'
+# PATCH via REST API — no GraphQL, no Projects query, works reliably
+gh api repos/dibene/english-app/pulls/<number> \
+  --method PATCH \
+  --field body="$PR_BODY" \
+  --jq '.body | split("\n") | .[0]'  # prints first line as confirmation
 ```
 
-If `gh pr view` shows stale content, the edit failed silently — check auth with `gh auth status`.
+Verify:
+```bash
+gh api repos/dibene/english-app/pulls/<number> --jq '.body | split("\n") | .[2]'
+```
 
 ## View PR status
 
@@ -91,9 +98,11 @@ gh pr create --repo dibene/english-app \
 git -C "$WORKTREE_PATH" add plan/F-XXX-<slug>.md
 git -C "$WORKTREE_PATH" commit --no-verify -m "plan(<slug>): add implementation plan"
 git -C "$WORKTREE_PATH" push
-gh pr edit <number> --repo dibene/english-app \
-  --body "Plan added. Awaiting human review before implementation." 2>&1 | grep -v "Projects (classic)"
-gh pr view <number> --repo dibene/english-app --json body --jq '.body | .[0:80]'  # verify
+# Use REST API — gh pr edit is broken (Projects classic GraphQL error)
+PR_BODY="Plan added. Awaiting human review before implementation."
+gh api repos/dibene/english-app/pulls/<number> --method PATCH --field body="$PR_BODY" --jq '.body'
+# verify
+gh api repos/dibene/english-app/pulls/<number> --jq '.body | split("\n") | .[0]'
 
 # Phase 4: Implementation
 cd "$WORKTREE_PATH/backend" && uv sync   # activate venv for pre-commit
