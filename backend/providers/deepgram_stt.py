@@ -54,6 +54,7 @@ class DeepgramSTTProvider(SpeechToTextProvider):
             return TranscriptionResult(transcript="", words=[])
 
         transcript = alternative.transcript or ""
+        confidence: float = float(alternative.confidence or 0.0)
 
         words: list[WordResult] = []
         if alternative.words:
@@ -67,4 +68,4 @@ class DeepgramSTTProvider(SpeechToTextProvider):
                     )
                 )
 
-        return TranscriptionResult(transcript=transcript, words=words)
+        return TranscriptionResult(transcript=transcript, confidence=confidence, words=words)

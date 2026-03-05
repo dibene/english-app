@@ -18,4 +18,5 @@ class TranscriptionResult:
     """Full transcription result from a speech-to-text provider."""
 
     transcript: str
+    confidence: float = 0.0  # overall transcript confidence, 0.0 - 1.0
     words: list[WordResult] = field(default_factory=list)

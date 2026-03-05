@@ -17,9 +17,10 @@ def _make_word(word: str, confidence: float, start: float, end: float) -> MagicM
     return w
 
 
-def _make_response(transcript: str, words: list[MagicMock]) -> MagicMock:
+def _make_response(transcript: str, words: list[MagicMock], confidence: float = 0.97) -> MagicMock:
     alternative = MagicMock()
     alternative.transcript = transcript
+    alternative.confidence = confidence
     alternative.words = words
 
     channel = MagicMock()
@@ -56,6 +57,15 @@ def test_transcribe_returns_transcript_text(provider: DeepgramSTTProvider) -> No
     result = provider.transcribe(b"fake-audio")
 
     assert result.transcript == "hello world"
+
+
+def test_transcribe_returns_transcript_confidence(provider: DeepgramSTTProvider) -> None:
+    response = _make_response(transcript="hello world", words=[], confidence=0.92)
+    provider._client.listen.v1.media.transcribe_file.return_value = response
+
+    result = provider.transcribe(b"fake-audio")
+
+    assert result.confidence == 0.92
 
 
 def test_transcribe_returns_word_list_with_correct_fields(
