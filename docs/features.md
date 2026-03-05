@@ -88,7 +88,7 @@ class TranscriptionResult:
 
 ### F-002 - Text Comparison Engine
 **Priority:** P0
-**Slug:** 	ext-comparison-engine
+**Slug:** text-comparison-engine
 
 Pure Python module that diffs the expected sentence against a TranscriptionResult.
 Uses word-level confidence from TranscriptionResult alongside sequence diff to classify
