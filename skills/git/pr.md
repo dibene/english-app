@@ -1,5 +1,32 @@
 # Skill: GitHub PRs with `gh` CLI
 
+## ⚠️ Known Issues (read before using any gh command)
+
+### `gh pr edit` is permanently broken for this repo
+
+**Symptom:** `gh pr edit` exits with code 1, PR body is NOT updated, no visible error.
+
+**Cause:** The repo has "Projects (classic)" enabled. Every `gh pr edit` call runs a
+GraphQL query for project cards that fails with a deprecation error, causing the whole
+mutation to abort before updating the body.
+
+**This is a repo-level issue. It will happen on every machine, every time.**
+
+**Rule: Never use `gh pr edit --body` in this repo. Always use `gh api` (REST):**
+
+```bash
+PR_BODY=$(cat <<'BODY'
+Your PR description here...
+BODY
+)
+gh api repos/dibene/english-app/pulls/<number> \
+  --method PATCH \
+  --field body="$PR_BODY" \
+  --jq '.body | split("\n") | .[0]'
+```
+
+---
+
 ## Create a PR
 
 ```bash
