@@ -112,6 +112,7 @@ class DiffEntry:
     spoken_word: str | None
     status: str             # "ok" | "missing" | "inserted" | "mispronounced"
     confidence: float | None
+    expected_phonemes: list[str] | None  # ARPAbet from cmudict, e.g. ["W", "ER1", "L", "D"]
 
 @dataclass
 class DiffResult:
@@ -197,6 +198,87 @@ structured error responses. This is the integration point between frontend and b
 - Audio file too large or wrong format
 - STT or LLM downstream failure surfaced as structured HTTP error
 - Request timeout (> 10 seconds)
+
+---
+
+### F-011 - Pronunciation Assessment Provider
+**Priority:** P1
+**Slug:** pronunciation-assessment-provider
+
+Define a `PronunciationAssessmentProvider` abstract interface — parallel to but separate from
+`SpeechToTextProvider`. Receives audio + expected text and returns per-word and per-phoneme
+pronunciation scores. Implements with Speechace (2.5 hrs/month free) as primary and
+Azure Pronunciation Assessment (5 hrs/month free) as alternative.
+
+This is NOT a type of STT. STT converts audio → text. Pronunciation Assessment
+scores how accurately the user pronounced the expected text.
+
+**Scope:**
+- Define abstract `PronunciationAssessmentProvider` in `backend/core/interfaces/pronunciation.py`
+- Define `PhonemeScore`, `WordPronunciationResult`, `PronunciationResult` in `backend/core/models/`
+- Implement `SpeechacePronunciationProvider` in `backend/providers/speechace_pronunciation.py`
+- Implement `AzurePronunciationProvider` in `backend/providers/azure_pronunciation.py`
+- Provider selected via `PRONUNCIATION_PROVIDER=speechace|azure` env var
+- Unit tests: mock API responses, assert PronunciationResult fields
+
+**Data models (to implement):**
+`python
+@dataclass
+class PhonemeScore:
+    phoneme: str        # ARPAbet symbol, e.g. "W"
+    score: float        # 0.0 - 1.0
+
+@dataclass
+class WordPronunciationResult:
+    word: str
+    score: float            # 0.0 - 1.0
+    phoneme_scores: list[PhonemeScore]
+
+@dataclass
+class PronunciationResult:
+    overall_score: float
+    fluency_score: float | None
+    words: list[WordPronunciationResult]
+`
+
+**Interface contract:**
+`python
+def assess(self, audio_bytes: bytes, expected_text: str) -> PronunciationResult: ...
+`
+
+**Free tier comparison:**
+| Provider | Free tier | Phoneme scores | Notes |
+|----------|-----------|---------------|-------|
+| Speechace | 2.5 hrs/month | ✅ | Language-learning oriented |
+| Azure PA | 5 hrs/month | ✅ | Also gives stress, prosody, syllable |
+
+**High-level error/failure modes:**
+- Invalid or missing API key
+- Audio format not supported
+- Expected text too long for provider limits
+- Provider returns empty or malformed response
+
+---
+
+### F-012 - Pronunciation Pipeline Integration
+**Priority:** P1
+**Slug:** pronunciation-pipeline-integration
+
+Enrich `DiffResult` with real per-phoneme scores from `PronunciationAssessmentProvider`
+by merging `PronunciationResult` into the comparison engine output. Update
+`PronunciationService` to optionally call the PA provider alongside STT.
+
+**Scope:**
+- Update `DiffEntry` to hold `phoneme_scores: list[PhonemeScore] | None` (actual scores from PA)
+- Update `TextComparisonEngine.compare()` to accept optional `PronunciationResult` and
+  merge per-word phoneme scores into the matching `DiffEntry`
+- Update `PronunciationService` to call `PronunciationAssessmentProvider` when configured
+- Update LLM prompt to include phoneme-level detail when available
+- Integration tests with mocked PA provider
+
+**High-level error/failure modes:**
+- PA provider word list doesn't align with DiffResult (handle gracefully, best-effort merge)
+- PA provider disabled/not configured (pipeline continues with phonemes=None)
 
 ---
 
