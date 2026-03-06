@@ -212,3 +212,56 @@ This is the foundation setup. Future features will add:
 - LLM-based feedback (OpenAI)
 - Pronunciation analysis
 - Audio processing
+
+---
+
+## Architecture Decisions
+
+### ADR-001: Azure Cognitive Services for Pronunciation Assessment
+
+**Decision:** Use Azure Cognitive Services Speech SDK (Pronunciation Assessment) for phoneme-level scoring.
+
+**Context:**
+The core value of this app is telling users *exactly* which sound they mispronounced, not just that a word was wrong. We evaluated several options:
+
+| Option | Free tier | Phoneme scores | Notes |
+|--------|-----------|---------------|-------|
+| Deepgram (confidence) | 72 hrs/month | ❌ | Word confidence only, no pronunciation scoring |
+| Speechace | 2.5 hrs/month | ✅ | Language-learning oriented, simpler API |
+| **Azure Pronunciation Assessment** | **5 hrs/month** | **✅** | Standard + per-phoneme accuracy, fluency, completeness, prosody |
+
+**Why Azure:**
+- Largest free tier (5 hrs/month vs 2.5 hrs)
+- Returns accuracy score per phoneme, per word, per sentence
+- Returns `ErrorType` per word: `None` / `Mispronunciation` / `Omission` / `Insertion`
+- Also provides fluency and prosody scores (useful for future features)
+- Official Python SDK (`azure-cognitiveservices-speech`)
+- The live demo at https://ai.azure.com/explore/aiservices/speech/pronunciationassessment shows exactly what the API returns
+
+**Consequence:**
+- Requires `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` env vars
+- `PronunciationAssessmentProvider` interface keeps the domain layer clean — Azure SDK only lives in `providers/`
+- Speechace documented as alternative if Azure quota is exceeded
+
+---
+
+### How to get your Azure Speech API key
+
+1. Go to [portal.azure.com](https://portal.azure.com) and sign in (or create a free account)
+2. Click **"Create a resource"** → search for **"Speech"** → select **"Speech service"**
+3. Fill in:
+   - **Subscription:** your subscription (free tier works)
+   - **Resource group:** create new, e.g. `english-app-rg`
+   - **Region:** pick the closest to you, e.g. `eastus`, `westeurope`
+   - **Name:** e.g. `english-app-speech`
+   - **Pricing tier:** `Free F0` (5 hours/month)
+4. Click **Review + Create** → **Create**
+5. Once deployed, go to the resource → **Keys and Endpoint**
+6. Copy **KEY 1** and the **Location/Region** value
+7. Add to your `.env`:
+   ```
+   AZURE_SPEECH_KEY=your_key_here
+   AZURE_SPEECH_REGION=eastus   # or whatever region you chose
+   ```
+
+> **Note:** The F0 free tier gives you 5 hours of audio per month. There is no credit card required to use the free tier, but you need an Azure account.
