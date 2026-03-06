@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
+    "deepgram-sdk>=6.0.1",
     "fastapi>=0.135.1",
     "httpx>=0.28.1",
     "pydantic>=2.12.5",
@@ -15,6 +16,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "black>=26.1.0",
+    "gtts>=2.5.4",
     "isort>=8.0.1",
     "mypy>=1.19.1",
     "pre-commit>=4.5.1",
@@ -49,7 +51,10 @@ disable = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
-addopts = "-v --cov=. --cov-report=term-missing"
+addopts = "-v --cov=. --cov-report=term-missing -m 'not live'"
+markers = [
+    "live: tests that call external APIs (run with: pytest -m live)",
+]
 
 [tool.coverage.run]
 source = ["."]
