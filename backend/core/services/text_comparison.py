@@ -1,11 +1,14 @@
 """Text comparison engine: diffs expected text against a TranscriptionResult."""
 
-import re
 import string
 from difflib import SequenceMatcher
 
+import cmudict
+
 from core.models.diff import DiffEntry, DiffResult
 from core.models.transcription import TranscriptionResult
+
+_CMUDICT: dict[str, list[list[str]]] = cmudict.dict()
 
 
 def _normalize(text: str) -> list[str]:
@@ -13,6 +16,14 @@ def _normalize(text: str) -> list[str]:
     text = text.lower()
     text = text.translate(str.maketrans("", "", string.punctuation))
     return text.split()
+
+
+def _get_phonemes(word: str) -> list[str] | None:
+    """Return ARPAbet phoneme list for word using cmudict, or None if unknown."""
+    pronunciations = _CMUDICT.get(word.lower())
+    if not pronunciations:
+        return None
+    return list(pronunciations[0])
 
 
 class TextComparisonEngine:
@@ -67,6 +78,7 @@ class TextComparisonEngine:
                                 spoken_word=spk,
                                 status="mispronounced",
                                 confidence=conf,
+                                expected_phonemes=_get_phonemes(exp),
                             )
                         )
                     else:
@@ -76,6 +88,7 @@ class TextComparisonEngine:
                                 spoken_word=spk,
                                 status="ok",
                                 confidence=conf,
+                                expected_phonemes=_get_phonemes(exp),
                             )
                         )
 
@@ -88,6 +101,7 @@ class TextComparisonEngine:
                             spoken_word=None,
                             status="missing",
                             confidence=None,
+                            expected_phonemes=_get_phonemes(exp),
                         )
                     )
 
@@ -119,6 +133,7 @@ class TextComparisonEngine:
                                 spoken_word=spk_slice[k],
                                 status="mispronounced",
                                 confidence=conf,
+                                expected_phonemes=_get_phonemes(exp_slice[k]),
                             )
                         )
                     else:
@@ -129,6 +144,7 @@ class TextComparisonEngine:
                                 spoken_word=None,
                                 status="missing",
                                 confidence=None,
+                                expected_phonemes=_get_phonemes(exp_slice[k]),
                             )
                         )
                         entries.append(
@@ -148,6 +164,7 @@ class TextComparisonEngine:
                             spoken_word=None,
                             status="missing",
                             confidence=None,
+                            expected_phonemes=_get_phonemes(exp),
                         )
                     )
 

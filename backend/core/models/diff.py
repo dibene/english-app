@@ -11,6 +11,7 @@ class DiffEntry:
     spoken_word: str | None
     status: str  # "ok" | "missing" | "inserted" | "mispronounced"
     confidence: float | None
+    expected_phonemes: list[str] | None = None  # e.g. ["W", "ER1", "L", "D"] from cmudict
 
 
 @dataclass
