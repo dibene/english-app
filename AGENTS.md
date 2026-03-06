@@ -291,6 +291,10 @@ Triggered by human saying: "implement it" or "go ahead".
    ```
 6. Convert the PR from **draft to ready for review**.
 7. Update PR description with: summary of what was implemented + test results.
+8. **Remove the worktree** — human will review via `git checkout`, not from the worktree:
+   ```bash
+   git -C "$REPO_ROOT" worktree remove "$WORKTREES_BASE/<slug>"
+   ```
 
 **Rules during implementation:**
 - Do NOT deviate from the plan without flagging it as a PR comment explaining why.
@@ -303,15 +307,30 @@ Triggered by human saying: "implement it" or "go ahead".
 
 ## Phase 5: Human Review and Merge
 
-- Human reviews the PR.
-- If changes are requested: human describes them, agent applies them in the same
-  worktree, commits, and pushes.
+- Once the PR is marked ready for review, **remove the worktree immediately**:
+
+```bash
+git -C "$REPO_ROOT" worktree remove "$WORKTREES_BASE/<slug>"
+```
+
+- The human reviews and tests by checking out the feature branch normally:
+
+```bash
+git fetch origin
+git checkout feat/<slug>
+cd backend
+uv sync
+uv run pytest
+uv run pytest -m live   # if live tests exist
+```
+
+- If changes are requested: human describes them, agent creates a new worktree on the same branch, applies the changes, commits, pushes, and removes the worktree again.
 - Once the human approves and merges:
 
 ```bash
-# Cleanup worktree after merge (run from anywhere)
-git -C "$REPO_ROOT" worktree remove "$WORKTREES_BASE/<slug>"
-git -C "$REPO_ROOT" branch -d feat/<slug>
+# On main, after merge: delete the remote-tracking branch
+git fetch --prune
+git branch -d feat/<slug>   # if not already deleted
 ```
 
 ---
@@ -434,5 +453,5 @@ english-app/
 - Do NOT skip the worktree setup
 - Do NOT modify files outside the feature scope without flagging it
 - Do NOT merge PRs - only humans merge
-- Do NOT remove the worktree until after the human merges the PR
+- Do NOT keep the worktree after the PR is marked ready — remove it immediately so the human reviews via `git checkout`
 - Do NOT silently deviate from the plan - flag deviations as PR comments
