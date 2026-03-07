@@ -6,6 +6,7 @@ from difflib import SequenceMatcher
 import cmudict
 
 from core.models.diff import DiffEntry, DiffResult
+from core.models.pronunciation import PhonemeScore, PronunciationResult
 from core.models.transcription import TranscriptionResult
 
 _CMUDICT: dict[str, list[list[str]]] = cmudict.dict()
@@ -26,6 +27,26 @@ def _get_phonemes(word: str) -> list[str] | None:
     return list(pronunciations[0])
 
 
+def _merge_phoneme_scores(
+    entries: list[DiffEntry],
+    pronunciation_result: PronunciationResult,
+) -> None:
+    """Best-effort merge of PA phoneme scores into DiffEntry list (in-place).
+
+    Matches by normalised word name. When multiple entries share the same
+    expected_word (unlikely but possible), only the first match is enriched.
+    Words present in PronunciationResult but absent from entries are ignored.
+    """
+    pa_by_word: dict[str, list[PhonemeScore]] = {
+        _normalize(w.word)[0]: w.phoneme_scores
+        for w in pronunciation_result.words
+        if _normalize(w.word)
+    }
+    for entry in entries:
+        if entry.expected_word and entry.expected_word in pa_by_word:
+            entry.phoneme_scores = pa_by_word.pop(entry.expected_word)
+
+
 class TextComparisonEngine:
     """Compares expected text against a TranscriptionResult word by word.
 
@@ -40,12 +61,15 @@ class TextComparisonEngine:
         self,
         expected_text: str,
         transcription_result: TranscriptionResult,
+        pronunciation_result: PronunciationResult | None = None,
     ) -> DiffResult:
         """Compare expected text against transcription and return a DiffResult.
 
         Args:
             expected_text: The sentence the user was supposed to say.
             transcription_result: The STT output with word-level confidence.
+            pronunciation_result: Optional PA provider output. When provided,
+                per-phoneme scores are merged into each DiffEntry by word name.
 
         Returns:
             DiffResult with a DiffEntry for every expected or spoken word.
@@ -179,4 +203,7 @@ class TextComparisonEngine:
                         )
                     )
 
-        return DiffResult(entries=entries)
+        result = DiffResult(entries=entries)
+        if pronunciation_result is not None:
+            _merge_phoneme_scores(entries, pronunciation_result)
+        return result

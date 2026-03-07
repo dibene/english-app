@@ -3,6 +3,7 @@
 import pytest
 
 from core.models.diff import DiffEntry, DiffResult
+from core.models.pronunciation import PhonemeScore, PronunciationResult, WordPronunciationResult
 from core.models.transcription import TranscriptionResult, WordResult
 from core.services.text_comparison import TextComparisonEngine
 
@@ -253,3 +254,99 @@ def test_expected_phonemes_none_for_unknown_word() -> None:
     result = engine.compare("zxqwerty", transcription)
 
     assert result.entries[0].expected_phonemes is None
+
+
+# ---------------------------------------------------------------------------
+# Phoneme score merge tests (F-012)
+# ---------------------------------------------------------------------------
+
+
+def _make_pronunciation_result(
+    words: list[tuple[str, list[tuple[str, float]]]],
+) -> PronunciationResult:
+    """Build a PronunciationResult from (word, [(phoneme, score), ...]) tuples."""
+    word_results = [
+        WordPronunciationResult(
+            word=w,
+            accuracy_score=90.0,
+            error_type="None",
+            phoneme_scores=[PhonemeScore(phoneme=p, score=s) for p, s in phonemes],
+        )
+        for w, phonemes in words
+    ]
+    return PronunciationResult(
+        accuracy_score=90.0,
+        fluency_score=88.0,
+        completeness_score=100.0,
+        prosody_score=None,
+        words=word_results,
+    )
+
+
+def test_phoneme_scores_none_without_pronunciation_result() -> None:
+    engine = TextComparisonEngine()
+    transcription = _make_transcription([("hello", 0.95), ("world", 0.92)])
+    result = engine.compare("hello world", transcription)
+
+    for entry in result.entries:
+        assert entry.phoneme_scores is None
+
+
+def test_phoneme_scores_merged_when_pronunciation_result_provided() -> None:
+    engine = TextComparisonEngine()
+    transcription = _make_transcription([("hello", 0.95), ("world", 0.92)])
+    pa_result = _make_pronunciation_result(
+        [
+            ("hello", [("HH", 98.0), ("AH", 92.0)]),
+            ("world", [("W", 80.0), ("ER", 60.0)]),
+        ]
+    )
+    result = engine.compare("hello world", transcription, pa_result)
+
+    hello_entry = next(e for e in result.entries if e.expected_word == "hello")
+    world_entry = next(e for e in result.entries if e.expected_word == "world")
+
+    assert hello_entry.phoneme_scores is not None
+    assert len(hello_entry.phoneme_scores) == 2
+    assert hello_entry.phoneme_scores[0].phoneme == "HH"
+    assert hello_entry.phoneme_scores[0].score == 98.0
+
+    assert world_entry.phoneme_scores is not None
+    assert len(world_entry.phoneme_scores) == 2
+    assert world_entry.phoneme_scores[0].phoneme == "W"
+    assert world_entry.phoneme_scores[0].score == 80.0
+
+
+def test_phoneme_scores_partial_match_is_best_effort() -> None:
+    """Words in PA result that don't match any entry are ignored gracefully."""
+    engine = TextComparisonEngine()
+    transcription = _make_transcription([("hello", 0.95)])
+    pa_result = _make_pronunciation_result(
+        [
+            ("hello", [("HH", 98.0)]),
+            ("unknown", [("AH", 50.0)]),  # no matching DiffEntry for this
+        ]
+    )
+    result = engine.compare("hello", transcription, pa_result)
+
+    hello_entry = result.entries[0]
+    assert hello_entry.phoneme_scores is not None
+    assert hello_entry.phoneme_scores[0].phoneme == "HH"
+
+
+def test_missing_word_entry_gets_phoneme_scores() -> None:
+    """A 'missing' word entry (spoken=None) should still get phoneme scores."""
+    engine = TextComparisonEngine()
+    transcription = _make_transcription([("hello", 0.95)])
+    pa_result = _make_pronunciation_result(
+        [
+            ("hello", [("HH", 95.0)]),
+            ("world", [("W", 0.0)]),  # world was omitted -> Omission in PA
+        ]
+    )
+    result = engine.compare("hello world", transcription, pa_result)
+
+    world_entry = next(e for e in result.entries if e.expected_word == "world")
+    assert world_entry.status == "missing"
+    assert world_entry.phoneme_scores is not None
+    assert world_entry.phoneme_scores[0].phoneme == "W"

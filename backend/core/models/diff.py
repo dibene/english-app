@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, field
 
+from core.models.pronunciation import PhonemeScore
+
 
 @dataclass
 class DiffEntry:
@@ -12,6 +14,7 @@ class DiffEntry:
     status: str  # "ok" | "missing" | "inserted" | "mispronounced"
     confidence: float | None
     expected_phonemes: list[str] | None = None  # e.g. ["W", "ER1", "L", "D"] from cmudict
+    phoneme_scores: list[PhonemeScore] | None = None  # actual scores from PA provider
 
 
 @dataclass
