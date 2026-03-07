@@ -131,7 +131,7 @@ class DiffResult:
 **Slug:** llm-feedback-generator
 
 Define the LLMProvider abstract interface and implement it with OpenAI gpt-4o-mini.
-Receives the full context: expected_text + TranscriptionResult + DiffResult.
+Receives the full context: expected_text + DiffResult.
 Produces the feedback JSON (score, errors[], suggestions[]).
 Provider is swappable via config - domain logic must not reference OpenAI directly.
 
@@ -139,10 +139,10 @@ Provider is swappable via config - domain logic must not reference OpenAI direct
 - Define abstract LLMProvider in backend/core/interfaces/llm.py
 - Implement OpenAILLMProvider in backend/providers/openai_llm.py
 - Provider selected via env var (LLM_PROVIDER=openai)
-- Prompt: provides expected text, spoken transcript with per-word confidence, and diff classification
+- Prompt includes: expected text, per-word diff status, confidence, and phoneme scores when available
 - Validate response is JSON and matches feedback schema before returning
 - Unit tests: mock OpenAI response, assert feedback JSON structure
-- Interface contract: generate_feedback(expected_text, transcription_result, diff_result) -> dict
+- Interface contract: generate_feedback(expected_text, diff_result) -> dict
 
 **High-level error/failure modes:**
 - Invalid or missing OPENAI_API_KEY
@@ -157,24 +157,90 @@ Provider is swappable via config - domain logic must not reference OpenAI direct
 **Priority:** P0 - built after F-001, F-002, F-003 are individually tested
 **Slug:** core-pipeline-service
 
-Application service that wires together STT + ComparisonEngine + LLM into a single
-PronunciationService.analyze(audio_bytes, expected_text) -> feedback_json call.
-Validated by an integration test using a real .wav file and real API calls (or
-wired mocks for CI). This is the first end-to-end proof that all pieces work together.
+Application service that wires STT/PA + ComparisonEngine + LLM into a single
+`PronunciationService.analyze(audio_bytes, expected_text) -> feedback_json` call.
+The pipeline uses `PronunciationResult` as the single shared structure — no
+`TranscriptionResult` in the core flow.
+
+---
+
+**Architecture decision: single result model**
+
+All domain models were unified in F-002/F-011/F-012:
+- `WordResult` (in `core/models/transcription.py`) holds word + confidence + optional phoneme_scores
+- `PronunciationResult` (in `core/models/pronunciation.py`) holds overall scores + `words: list[WordResult]`
+- `WordPronunciationResult` was removed — `WordResult` is used everywhere
+
+`TextComparisonEngine.compare()` currently accepts `(expected_text, transcription_result, pronunciation_result=None)`.
+This feature **changes that signature** to a single:
+```python
+def compare(self, expected_text: str, result: PronunciationResult) -> DiffResult
+```
+
+The `_merge_phoneme_scores()` helper is deleted — phoneme_scores already live in
+`WordResult` when they come from Azure.
+
+---
+
+**Provider strategy: Azure only for PA, Deepgram adapter for STT-only**
+
+Two configurations are supported by the pipeline:
+
+**Option A — Azure (full PA):**
+```
+audio -> AzurePronunciationProvider.assess() -> PronunciationResult
+  (WordResult has confidence + error_type + phoneme_scores)
+```
+
+**Option B — Deepgram (STT only, no phonemes):**
+```
+audio -> DeepgramSTTProvider.transcribe() -> TranscriptionResult
+  -> _transcription_to_pronunciation_result() -> PronunciationResult
+  (WordResult has confidence only, phoneme_scores=None)
+```
+
+The adapter `_transcription_to_pronunciation_result()` lives in the service layer:
+```python
+def _transcription_to_pronunciation_result(t: TranscriptionResult) -> PronunciationResult:
+    return PronunciationResult(
+        accuracy_score=t.confidence * 100,
+        fluency_score=t.confidence * 100,
+        completeness_score=100.0,
+        prosody_score=None,
+        words=t.words,  # WordResult, phoneme_scores=None
+    )
+```
+
+Active provider selected via env var: `PRONUNCIATION_PROVIDER=azure|deepgram`
+
+---
 
 **Scope:**
-- PronunciationService in backend/core/services/pronunciation_service.py
-- Orchestrates: SpeechToTextProvider -> ComparisonEngine -> LLMProvider
-- Integration test in backend/tests/test_pipeline_integration.py
-- Test uses a real .wav audio sample committed to tests/fixtures/
-- Test asserts: feedback_json has score (int), errors (list), suggestions (list)
-- No HTTP layer needed - direct service call in pytest
+- `PronunciationService` in `backend/core/services/pronunciation_service.py`
+- Update `TextComparisonEngine.compare()` signature: remove `transcription_result` and
+  `pronunciation_result` params, replace with single `result: PronunciationResult`
+- Update `_merge_phoneme_scores()`: delete it — `phoneme_scores` is already on `WordResult`
+- Implement `_transcription_to_pronunciation_result()` adapter in service layer
+- `PronunciationService.analyze(audio_bytes, expected_text) -> dict` orchestrates:
+  1. Call active provider → `PronunciationResult`
+  2. `TextComparisonEngine.compare(expected_text, result)` → `DiffResult`
+  3. `LLMProvider.generate_feedback(expected_text, diff_result)` → `dict`
+- Integration test in `backend/tests/test_pipeline_integration.py`
+  - Mocked providers for CI; real `.wav` fixture for `@pytest.mark.live`
+  - Asserts: `feedback_json` has `score` (int), `errors` (list), `suggestions` (list)
+- Update all existing unit tests that call `compare()` with the old signature
+
+**Files to create or modify:**
+- `backend/core/services/pronunciation_service.py` — create
+- `backend/core/services/text_comparison.py` — update `compare()` signature, delete `_merge_phoneme_scores`
+- `backend/tests/test_pipeline_integration.py` — create
+- `backend/tests/test_text_comparison.py` — update tests to new signature
 
 **High-level error/failure modes:**
-- STT returns empty transcript (no speech in audio)
-- DiffResult is empty (expected and spoken match perfectly - valid case, score 100)
+- Provider returns empty words (no speech in audio)
+- DiffResult is empty (expected and spoken match perfectly — valid, score 100)
 - LLM returns malformed JSON
-- Any provider raises - service propagates as domain exception
+- Any provider raises — service propagates as domain exception
 
 ---
 
