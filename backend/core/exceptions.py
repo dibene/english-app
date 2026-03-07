@@ -11,3 +11,9 @@ class PronunciationError(Exception):
     """Raised when pronunciation assessment fails."""
 
     pass
+
+
+class LLMFeedbackError(Exception):
+    """Raised when LLM feedback generation fails."""
+
+    pass
