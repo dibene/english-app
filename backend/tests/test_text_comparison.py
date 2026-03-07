@@ -3,8 +3,8 @@
 import pytest
 
 from core.models.diff import DiffEntry, DiffResult
-from core.models.pronunciation import PhonemeScore, PronunciationResult, WordPronunciationResult
-from core.models.transcription import TranscriptionResult, WordResult
+from core.models.pronunciation import PronunciationResult
+from core.models.transcription import PhonemeScore, TranscriptionResult, WordResult
 from core.services.text_comparison import TextComparisonEngine
 
 # ---------------------------------------------------------------------------
@@ -266,9 +266,11 @@ def _make_pronunciation_result(
 ) -> PronunciationResult:
     """Build a PronunciationResult from (word, [(phoneme, score), ...]) tuples."""
     word_results = [
-        WordPronunciationResult(
+        WordResult(
             word=w,
-            accuracy_score=90.0,
+            confidence=0.9,
+            start_time=None,
+            end_time=None,
             error_type="None",
             phoneme_scores=[PhonemeScore(phoneme=p, score=s) for p, s in phonemes],
         )

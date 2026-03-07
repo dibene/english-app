@@ -145,12 +145,12 @@ def test_assess_returns_word_list(provider: AzurePronunciationProvider) -> None:
     assert result.words[1].word == "world"
 
 
-def test_assess_word_has_accuracy_score(provider: AzurePronunciationProvider) -> None:
+def test_assess_word_has_confidence(provider: AzurePronunciationProvider) -> None:
     words = [_make_word("hello", 95.0, "None", [])]
     sdk_result = _make_sdk_result(json_str=_make_json_result(words))
     result = _run_assess(provider, _make_pa_result(), sdk_result)
 
-    assert result.words[0].accuracy_score == 95.0
+    assert result.words[0].confidence == pytest.approx(0.95)
 
 
 def test_assess_word_has_error_type(provider: AzurePronunciationProvider) -> None:

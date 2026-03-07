@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from core.models.pronunciation import PhonemeScore
+from core.models.transcription import PhonemeScore
 
 
 @dataclass

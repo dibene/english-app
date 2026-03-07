@@ -6,8 +6,8 @@ from difflib import SequenceMatcher
 import cmudict
 
 from core.models.diff import DiffEntry, DiffResult
-from core.models.pronunciation import PhonemeScore, PronunciationResult
-from core.models.transcription import TranscriptionResult
+from core.models.pronunciation import PronunciationResult
+from core.models.transcription import PhonemeScore, TranscriptionResult
 
 _CMUDICT: dict[str, list[list[str]]] = cmudict.dict()
 
