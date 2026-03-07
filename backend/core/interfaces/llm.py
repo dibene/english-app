@@ -10,8 +10,11 @@ class LLMProvider(ABC):
 
     Receives the expected text and a word-level diff result, and produces
     structured pronunciation feedback (score, errors, suggestions).
-    Provider is swappable via the LLM_PROVIDER env var — domain logic must
-    never reference a concrete provider directly.
+
+    The concrete implementation is selected via the LLM_PROVIDER env var.
+    Current implementation (OpenAILLMProvider) supports any OpenAI-compatible
+    API: Gemini, Groq, Ollama (local), or OpenAI — no OpenAI account required.
+    Domain logic must never reference a concrete provider directly.
     """
 
     @abstractmethod
