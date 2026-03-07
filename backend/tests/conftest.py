@@ -1,0 +1,7 @@
+"""Pytest configuration: load backend/.env before any test runs."""
+
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / ".env")
