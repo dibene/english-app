@@ -78,21 +78,57 @@ def _validate_schema(data: dict) -> None:
 
 
 class OpenAILLMProvider(LLMProvider):
-    """LLM feedback provider backed by the OpenAI Chat Completions API."""
+    """LLM feedback provider backed by any OpenAI-compatible Chat Completions API.
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini") -> None:
-        """Initialize the OpenAI LLM provider.
+    Works with OpenAI, Gemini (via OpenAI compatibility layer), Groq, and local
+    Ollama — just set the appropriate model and base_url.
+
+    Examples:
+        # OpenAI
+        OpenAILLMProvider(api_key=..., model="gpt-4o-mini")
+
+        # Gemini (free tier)
+        OpenAILLMProvider(
+            api_key=GEMINI_API_KEY,
+            model="gemini-2.0-flash",
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+
+        # Groq (free tier)
+        OpenAILLMProvider(
+            api_key=GROQ_API_KEY,
+            model="llama-3.3-70b-versatile",
+            base_url="https://api.groq.com/openai/v1",
+        )
+
+        # Ollama (local, no API key needed)
+        OpenAILLMProvider(
+            api_key="ollama",
+            model="llama3.2:8b",
+            base_url="http://localhost:11434/v1",
+        )
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-4o-mini",
+        base_url: str | None = None,
+    ) -> None:
+        """Initialize the LLM provider.
 
         Args:
-            api_key: OpenAI API key. Must be non-empty.
-            model: Chat model to use. Defaults to "gpt-4o-mini".
+            api_key: API key. Must be non-empty (use "ollama" for local Ollama).
+            model: Chat model identifier. Defaults to "gpt-4o-mini".
+            base_url: Optional base URL override for non-OpenAI providers
+                (Gemini, Groq, Ollama, etc.). If None, uses the OpenAI default.
 
         Raises:
             ValueError: If api_key is empty or whitespace.
         """
         if not api_key or not api_key.strip():
             raise ValueError("OPENAI_API_KEY must be set and non-empty")
-        self._client = OpenAI(api_key=api_key)
+        self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
 
     def generate_feedback(self, expected_text: str, diff_result: DiffResult) -> dict:
