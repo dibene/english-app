@@ -2,23 +2,7 @@
 
 from dataclasses import dataclass, field
 
-
-@dataclass
-class PhonemeScore:
-    """Accuracy score for a single phoneme."""
-
-    phoneme: str  # e.g. "w", "er", "l", "d"
-    score: float  # 0.0 - 100.0 (Azure HundredMark scale)
-
-
-@dataclass
-class WordPronunciationResult:
-    """Pronunciation assessment result for a single word."""
-
-    word: str
-    accuracy_score: float  # 0.0 - 100.0
-    error_type: str  # "None" | "Mispronunciation" | "Omission" | "Insertion"
-    phoneme_scores: list[PhonemeScore] = field(default_factory=list)
+from core.models.transcription import WordResult
 
 
 @dataclass
@@ -29,4 +13,4 @@ class PronunciationResult:
     fluency_score: float
     completeness_score: float
     prosody_score: float | None
-    words: list[WordPronunciationResult] = field(default_factory=list)
+    words: list[WordResult] = field(default_factory=list)
