@@ -111,7 +111,7 @@ def _run_assess(
         ),
     ):
         mock_recognizer = MagicMock()
-        mock_recognizer.recognize_once_sync.return_value = sdk_result
+        mock_recognizer.recognize_once.return_value = sdk_result
         mock_recognizer_cls.return_value = mock_recognizer
         return provider.assess(b"fake-audio", EXPECTED_TEXT)
 
@@ -201,7 +201,7 @@ def test_assess_raises_on_no_match(provider: AzurePronunciationProvider) -> None
             ) as mock_recognizer_cls,
         ):
             mock_recognizer = MagicMock()
-            mock_recognizer.recognize_once_sync.return_value = sdk_result
+            mock_recognizer.recognize_once.return_value = sdk_result
             mock_recognizer_cls.return_value = mock_recognizer
             provider.assess(b"fake-audio", EXPECTED_TEXT)
 
@@ -223,7 +223,7 @@ def test_assess_raises_on_canceled(provider: AzurePronunciationProvider) -> None
             ),
         ):
             mock_recognizer = MagicMock()
-            mock_recognizer.recognize_once_sync.return_value = sdk_result
+            mock_recognizer.recognize_once.return_value = sdk_result
             mock_recognizer_cls.return_value = mock_recognizer
             provider.assess(b"fake-audio", EXPECTED_TEXT)
 
@@ -239,6 +239,6 @@ def test_assess_raises_on_sdk_exception(provider: AzurePronunciationProvider) ->
             ) as mock_recognizer_cls,
         ):
             mock_recognizer = MagicMock()
-            mock_recognizer.recognize_once_sync.side_effect = RuntimeError("network timeout")
+            mock_recognizer.recognize_once.side_effect = RuntimeError("network timeout")
             mock_recognizer_cls.return_value = mock_recognizer
             provider.assess(b"fake-audio", EXPECTED_TEXT)

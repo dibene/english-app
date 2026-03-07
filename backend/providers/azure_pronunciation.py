@@ -65,7 +65,7 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
         pa_config.apply_to(recognizer)
 
         try:
-            result = recognizer.recognize_once_sync()
+            result = recognizer.recognize_once()
         except Exception as exc:
             raise PronunciationError(f"Azure Speech SDK error: {exc}") from exc
 
