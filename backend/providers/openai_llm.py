@@ -1,6 +1,7 @@
 """OpenAI implementation of the LLMProvider interface."""
 
 import json
+from typing import Any
 
 from openai import OpenAI, OpenAIError
 
@@ -53,7 +54,7 @@ def _build_user_prompt(expected_text: str, diff_result: DiffResult) -> str:
     return "\n".join(lines)
 
 
-def _validate_schema(data: dict) -> None:
+def _validate_schema(data: dict[str, Any]) -> None:
     """Raise LLMFeedbackError if the feedback dict does not match the expected schema."""
     if "score" not in data:
         raise LLMFeedbackError("LLM response missing required field: 'score'")
@@ -66,9 +67,7 @@ def _validate_schema(data: dict) -> None:
                 f"LLM response 'score' must be an integer, got {type(data['score']).__name__}"
             )
     if not (0 <= data["score"] <= 100):
-        raise LLMFeedbackError(
-            f"LLM response 'score' out of range [0, 100]: {data['score']}"
-        )
+        raise LLMFeedbackError(f"LLM response 'score' out of range [0, 100]: {data['score']}")
     if "errors" not in data or not isinstance(data["errors"], list):
         raise LLMFeedbackError("LLM response missing or invalid field: 'errors' (must be a list)")
     if "suggestions" not in data or not isinstance(data["suggestions"], list):
@@ -131,7 +130,7 @@ class OpenAILLMProvider(LLMProvider):
         self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
 
-    def generate_feedback(self, expected_text: str, diff_result: DiffResult) -> dict:
+    def generate_feedback(self, expected_text: str, diff_result: DiffResult) -> dict[str, Any]:
         """Generate structured pronunciation feedback via OpenAI.
 
         Args:
@@ -161,7 +160,7 @@ class OpenAILLMProvider(LLMProvider):
 
         raw = response.choices[0].message.content or ""
         try:
-            data: dict = json.loads(raw)
+            data: dict[str, Any] = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise LLMFeedbackError(f"OpenAI returned non-JSON response: {raw[:200]}") from exc
 

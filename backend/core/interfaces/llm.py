@@ -1,6 +1,7 @@
 """Abstract interface for LLM-based feedback providers."""
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from core.models.diff import DiffResult
 
@@ -18,7 +19,7 @@ class LLMProvider(ABC):
     """
 
     @abstractmethod
-    def generate_feedback(self, expected_text: str, diff_result: DiffResult) -> dict:
+    def generate_feedback(self, expected_text: str, diff_result: DiffResult) -> dict[str, Any]:
         """Generate structured pronunciation feedback.
 
         Args:
