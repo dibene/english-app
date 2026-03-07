@@ -26,8 +26,12 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
             raise ValueError("AZURE_SPEECH_KEY must be set and non-empty")
         if not region or not region.strip():
             raise ValueError("AZURE_SPEECH_REGION must be set and non-empty")
-        self._key = key
-        self._region = region
+        self._speech_config = speechsdk.SpeechConfig(subscription=key, region=region)
+        self._audio_format = speechsdk.audio.AudioStreamFormat(
+            samples_per_second=16000,
+            bits_per_sample=16,
+            channels=1,
+        )
 
     def assess(self, audio_bytes: bytes, expected_text: str) -> PronunciationResult:
         """Assess pronunciation of audio against the expected text.
@@ -42,8 +46,6 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
         Raises:
             PronunciationError: If the Azure SDK call fails or returns no result.
         """
-        speech_config = speechsdk.SpeechConfig(subscription=self._key, region=self._region)
-
         pa_config = speechsdk.PronunciationAssessmentConfig(
             reference_text=expected_text,
             grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
@@ -52,18 +54,13 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
         )
         pa_config.enable_prosody_assessment()
 
-        audio_format = speechsdk.audio.AudioStreamFormat(
-            samples_per_second=16000,
-            bits_per_sample=16,
-            channels=1,
-        )
-        push_stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
+        push_stream = speechsdk.audio.PushAudioInputStream(stream_format=self._audio_format)
         push_stream.write(audio_bytes)
         push_stream.close()
 
         audio_config = speechsdk.audio.AudioConfig(stream=push_stream)
         recognizer = speechsdk.SpeechRecognizer(
-            speech_config=speech_config, audio_config=audio_config
+            speech_config=self._speech_config, audio_config=audio_config
         )
         pa_config.apply_to(recognizer)
 

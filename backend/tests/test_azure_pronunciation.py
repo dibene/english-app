@@ -99,11 +99,9 @@ def _run_assess(
     pa_result: MagicMock,
     sdk_result: MagicMock,
 ) -> Any:
-    """Patch all Azure SDK entry points and call provider.assess()."""
+    """Patch per-call Azure SDK entry points and call provider.assess()."""
     with (
-        patch("providers.azure_pronunciation.speechsdk.SpeechConfig"),
         patch("providers.azure_pronunciation.speechsdk.PronunciationAssessmentConfig"),
-        patch("providers.azure_pronunciation.speechsdk.audio.AudioStreamFormat"),
         patch("providers.azure_pronunciation.speechsdk.audio.PushAudioInputStream"),
         patch("providers.azure_pronunciation.speechsdk.audio.AudioConfig"),
         patch("providers.azure_pronunciation.speechsdk.SpeechRecognizer") as mock_recognizer_cls,
@@ -195,9 +193,7 @@ def test_assess_raises_on_no_match(provider: AzurePronunciationProvider) -> None
 
     with pytest.raises(PronunciationError, match="NoMatch"):
         with (
-            patch("providers.azure_pronunciation.speechsdk.SpeechConfig"),
             patch("providers.azure_pronunciation.speechsdk.PronunciationAssessmentConfig"),
-            patch("providers.azure_pronunciation.speechsdk.audio.AudioStreamFormat"),
             patch("providers.azure_pronunciation.speechsdk.audio.PushAudioInputStream"),
             patch("providers.azure_pronunciation.speechsdk.audio.AudioConfig"),
             patch(
@@ -215,9 +211,7 @@ def test_assess_raises_on_canceled(provider: AzurePronunciationProvider) -> None
 
     with pytest.raises(PronunciationError, match="canceled"):
         with (
-            patch("providers.azure_pronunciation.speechsdk.SpeechConfig"),
             patch("providers.azure_pronunciation.speechsdk.PronunciationAssessmentConfig"),
-            patch("providers.azure_pronunciation.speechsdk.audio.AudioStreamFormat"),
             patch("providers.azure_pronunciation.speechsdk.audio.PushAudioInputStream"),
             patch("providers.azure_pronunciation.speechsdk.audio.AudioConfig"),
             patch(
@@ -237,9 +231,7 @@ def test_assess_raises_on_canceled(provider: AzurePronunciationProvider) -> None
 def test_assess_raises_on_sdk_exception(provider: AzurePronunciationProvider) -> None:
     with pytest.raises(PronunciationError, match="Azure Speech SDK error"):
         with (
-            patch("providers.azure_pronunciation.speechsdk.SpeechConfig"),
             patch("providers.azure_pronunciation.speechsdk.PronunciationAssessmentConfig"),
-            patch("providers.azure_pronunciation.speechsdk.audio.AudioStreamFormat"),
             patch("providers.azure_pronunciation.speechsdk.audio.PushAudioInputStream"),
             patch("providers.azure_pronunciation.speechsdk.audio.AudioConfig"),
             patch(
