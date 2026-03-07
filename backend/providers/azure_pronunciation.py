@@ -6,7 +6,8 @@ import azure.cognitiveservices.speech as speechsdk
 
 from core.exceptions import PronunciationError
 from core.interfaces.pronunciation import PronunciationAssessmentProvider
-from core.models.pronunciation import PhonemeScore, PronunciationResult, WordPronunciationResult
+from core.models.pronunciation import PronunciationResult
+from core.models.transcription import PhonemeScore, WordResult
 
 
 class AzurePronunciationProvider(PronunciationAssessmentProvider):
@@ -96,9 +97,7 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
             words=words,
         )
 
-    def _parse_words(
-        self, raw_result: speechsdk.SpeechRecognitionResult
-    ) -> list[WordPronunciationResult]:
+    def _parse_words(self, raw_result: speechsdk.SpeechRecognitionResult) -> list[WordResult]:
         """Parse per-word and per-phoneme detail from the raw JSON result."""
         try:
             detail = json.loads(
@@ -114,7 +113,7 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
             return []
 
         words_data = nbes[0].get("Words", [])
-        words: list[WordPronunciationResult] = []
+        words: list[WordResult] = []
 
         for w in words_data:
             pa = w.get("PronunciationAssessment", {})
@@ -129,9 +128,11 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
             ]
 
             words.append(
-                WordPronunciationResult(
+                WordResult(
                     word=w.get("Word", ""),
-                    accuracy_score=pa.get("AccuracyScore", 0.0),
+                    confidence=pa.get("AccuracyScore", 0.0) / 100.0,
+                    start_time=None,
+                    end_time=None,
                     error_type=pa.get("ErrorType", "None"),
                     phoneme_scores=phoneme_scores,
                 )
