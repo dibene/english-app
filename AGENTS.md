@@ -20,6 +20,7 @@ All agents (GitHub Copilot, Claude, OpenAI Codex, and others) must follow this w
 - **Architecture:** Clean Architecture - domain layer has zero provider dependencies
 - **PRD:** [docs/mvp_prd.md](docs/mvp_prd.md)
 - **Feature list:** [docs/features.md](docs/features.md)
+- **PR operations skill:** [skills/git/pr.md](skills/git/pr.md) — **MUST be read before any `gh` PR command**
 
 ---
 
@@ -203,6 +204,8 @@ esearch/<slug>.md and commit it.
    git -C "$WORKTREE_PATH" push -u origin feat/<slug>
    ```
 3. Open a **draft PR** titled: [<FEATURE-ID>] <Feature Name>
+   > ⚠️ **Read [skills/git/pr.md](skills/git/pr.md) before running any `gh` command.**
+   > `gh pr edit` is permanently broken in this repo. Use `gh api` (REST) to update PR bodies.
 4. PR description must say: "Research complete. Awaiting human review before planning."
 5. Wait for human to review. Human will say: "looks good, make the plan" or give feedback.
 
@@ -262,6 +265,7 @@ What pytest tests will validate this feature as complete:
    git -C "$WORKTREE_PATH" push
    ```
 3. Update PR description: "Plan added. Awaiting human review before implementation."
+   > ⚠️ Use `gh api` (REST) to update the body — see [skills/git/pr.md](skills/git/pr.md).
 4. Wait. Human will review and say "implement it" or give feedback.
 
 ---
@@ -290,7 +294,9 @@ Triggered by human saying: "implement it" or "go ahead".
    git -C "$WORKTREE_PATH" push
    ```
 6. Convert the PR from **draft to ready for review**.
+   > Use `gh pr ready <number> --repo dibene/english-app` — see [skills/git/pr.md](skills/git/pr.md).
 7. Update PR description with: summary of what was implemented + test results.
+   > ⚠️ Use `gh api` (REST) to update the body — see [skills/git/pr.md](skills/git/pr.md).
 8. **Remove the worktree** — human will review via `git checkout`, not from the worktree:
    ```bash
    git -C "$REPO_ROOT" worktree remove "$WORKTREES_BASE/<slug>"
