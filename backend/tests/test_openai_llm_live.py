@@ -8,9 +8,11 @@ Run manually with:
     RUN_LLM_LIVE_TESTS=true uv run pytest tests/test_openai_llm_live.py -v
 
 Or set RUN_LLM_LIVE_TESTS=true in backend/.env and run:
-    uv run pytest -m live -v
+    uv run pytest tests/test_openai_llm_live.py -v
 
 Works with any OpenAI-compatible provider (Gemini, Groq, Ollama, OpenAI).
+OpenAI-compatible is the de-facto industry standard protocol — configure via
+LLM_API_KEY + LLM_BASE_URL to switch between services without code changes.
 Configure via LLM_API_KEY, LLM_MODEL, LLM_BASE_URL in backend/.env.
 """
 
@@ -83,7 +85,6 @@ def _make_diff_result() -> DiffResult:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.live
 @skip_if_not_configured
 def test_live_returns_valid_schema(live_provider: OpenAILLMProvider) -> None:
     """Real API call: response must have score, errors, and suggestions."""
@@ -95,7 +96,6 @@ def test_live_returns_valid_schema(live_provider: OpenAILLMProvider) -> None:
     assert "suggestions" in result, "response must have 'suggestions'"
 
 
-@pytest.mark.live
 @skip_if_not_configured
 def test_live_score_in_range(live_provider: OpenAILLMProvider) -> None:
     """score must be an integer between 0 and 100."""
@@ -105,7 +105,6 @@ def test_live_score_in_range(live_provider: OpenAILLMProvider) -> None:
     assert 0 <= result["score"] <= 100, f"score out of range: {result['score']}"
 
 
-@pytest.mark.live
 @skip_if_not_configured
 def test_live_errors_is_list(live_provider: OpenAILLMProvider) -> None:
     """errors must be a list (can be empty)."""
@@ -114,7 +113,6 @@ def test_live_errors_is_list(live_provider: OpenAILLMProvider) -> None:
     assert isinstance(result["errors"], list), "errors must be a list"
 
 
-@pytest.mark.live
 @skip_if_not_configured
 def test_live_suggestions_is_list(live_provider: OpenAILLMProvider) -> None:
     """suggestions must be a non-empty list."""
@@ -124,7 +122,6 @@ def test_live_suggestions_is_list(live_provider: OpenAILLMProvider) -> None:
     assert len(result["suggestions"]) >= 1, "suggestions must have at least one item"
 
 
-@pytest.mark.live
 @skip_if_not_configured
 def test_live_perfect_score_for_all_ok(live_provider: OpenAILLMProvider) -> None:
     """All-ok diff should produce a high score and empty errors list."""

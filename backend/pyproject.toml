@@ -54,10 +54,7 @@ disable = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
-addopts = "-v --cov=. --cov-report=term-missing -m 'not live'"
-markers = [
-    "live: tests that call external APIs (run with: pytest -m live)",
-]
+addopts = "-v --cov=. --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["."]
