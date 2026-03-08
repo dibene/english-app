@@ -21,6 +21,7 @@ import os
 import pytest
 
 from core.models.diff import DiffEntry, DiffResult
+from core.models.transcription import PhonemeScore
 from providers.openai_llm import OpenAILLMProvider
 
 # ---------------------------------------------------------------------------
@@ -134,3 +135,36 @@ def test_live_perfect_score_for_all_ok(live_provider: OpenAILLMProvider) -> None
     result = live_provider.generate_feedback("hello world", diff)
 
     assert result["score"] >= 80, f"all-ok diff should score >= 80, got {result['score']}"
+
+
+@skip_if_not_configured
+def test_live_phoneme_scores_in_prompt_affect_response(live_provider: OpenAILLMProvider) -> None:
+    """Phoneme scores in DiffResult entries must not break the response schema.
+
+    Sends a diff where a mispronounced word includes per-phoneme detail and
+    verifies the LLM still returns a valid schema with at least one error entry
+    referencing the mispronounced word.
+    """
+    diff = DiffResult(
+        entries=[
+            DiffEntry(
+                expected_word="world",
+                spoken_word="word",
+                status="mispronounced",
+                confidence=0.55,
+                phoneme_scores=[
+                    PhonemeScore(phoneme="W", score=90.0),
+                    PhonemeScore(phoneme="ER1", score=30.0),
+                    PhonemeScore(phoneme="L", score=25.0),
+                    PhonemeScore(phoneme="D", score=80.0),
+                ],
+            )
+        ]
+    )
+    result = live_provider.generate_feedback("world", diff)
+
+    assert isinstance(result, dict)
+    assert "score" in result and "errors" in result and "suggestions" in result
+    assert (
+        isinstance(result["errors"], list) and len(result["errors"]) >= 1
+    ), "expected at least one error for mispronounced word with low phoneme scores"
