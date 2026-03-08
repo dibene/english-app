@@ -1,6 +1,7 @@
-"""OpenAI implementation of the LLMProvider interface."""
+"""OpenAI-compatible LLM provider implementation."""
 
 import json
+import logging
 from typing import Any
 
 from openai import OpenAI, OpenAIError
@@ -8,6 +9,8 @@ from openai import OpenAI, OpenAIError
 from core.exceptions import LLMFeedbackError
 from core.interfaces.llm import LLMProvider
 from core.models.diff import DiffResult
+
+logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """\
 You are a professional English pronunciation coach.
@@ -126,9 +129,14 @@ class OpenAILLMProvider(LLMProvider):
             ValueError: If api_key is empty or whitespace.
         """
         if not api_key or not api_key.strip():
-            raise ValueError("OPENAI_API_KEY must be set and non-empty")
+            raise ValueError("LLM API key must be set and non-empty")
         self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
+        logger.debug(
+            "OpenAILLMProvider initialised: model=%s base_url=%s",
+            model,
+            base_url or "(openai default)",
+        )
 
     def generate_feedback(self, expected_text: str, diff_result: DiffResult) -> dict[str, Any]:
         """Generate structured pronunciation feedback via OpenAI.
@@ -145,6 +153,8 @@ class OpenAILLMProvider(LLMProvider):
                 JSON, or the returned structure does not match the schema.
         """
         user_prompt = _build_user_prompt(expected_text, diff_result)
+        n_words = len(diff_result.entries)
+        logger.debug("generate_feedback: model=%s expected_text=%r n_words=%d", self._model, expected_text, n_words)
 
         try:
             response = self._client.chat.completions.create(
@@ -156,13 +166,18 @@ class OpenAILLMProvider(LLMProvider):
                 ],
             )
         except OpenAIError as exc:
+            logger.error("LLM API call failed: model=%s error=%s", self._model, exc)
             raise LLMFeedbackError(f"OpenAI API call failed: {exc}") from exc
 
         raw = response.choices[0].message.content or ""
+        logger.debug("LLM raw response (first 200 chars): %s", raw[:200])
+
         try:
             data: dict[str, Any] = json.loads(raw)
         except json.JSONDecodeError as exc:
+            logger.error("LLM returned non-JSON response: %s", raw[:200])
             raise LLMFeedbackError(f"OpenAI returned non-JSON response: {raw[:200]}") from exc
 
         _validate_schema(data)
+        logger.debug("generate_feedback result: score=%s n_errors=%d", data.get("score"), len(data.get("errors", [])))
         return data

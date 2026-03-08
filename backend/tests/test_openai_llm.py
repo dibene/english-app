@@ -67,12 +67,12 @@ def provider() -> OpenAILLMProvider:
 
 
 def test_missing_api_key_raises_value_error() -> None:
-    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+    with pytest.raises(ValueError, match="API key"):
         OpenAILLMProvider(api_key="")
 
 
 def test_whitespace_api_key_raises_value_error() -> None:
-    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+    with pytest.raises(ValueError, match="API key"):
         OpenAILLMProvider(api_key="   ")
 
 
