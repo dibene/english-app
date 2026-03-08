@@ -1,13 +1,13 @@
 """Live tests for OpenAILLMProvider — makes a real API call to the configured LLM service.
 
 These tests are skipped automatically unless both conditions are met:
-  1. RUN_LLM_LIVE_TESTS=true  (in backend/.env or environment)
+  1. RUN_LLM_GEMINI_LIVE_TESTS=true  (in backend/.env or environment)
   2. LLM_API_KEY is set and non-empty
 
 Run manually with:
-    RUN_LLM_LIVE_TESTS=true uv run pytest tests/test_openai_llm_live.py -v
+    RUN_LLM_GEMINI_LIVE_TESTS=true uv run pytest tests/test_openai_llm_live.py -v
 
-Or set RUN_LLM_LIVE_TESTS=true in backend/.env and run:
+Or set RUN_LLM_GEMINI_LIVE_TESTS=true in backend/.env and run:
     uv run pytest tests/test_openai_llm_live.py -v
 
 Works with any OpenAI-compatible provider (Gemini, Groq, Ollama, OpenAI).
@@ -28,11 +28,11 @@ from providers.openai_llm import OpenAILLMProvider
 # ---------------------------------------------------------------------------
 
 _api_key = os.environ.get("LLM_API_KEY", "").strip()
-_run_live = os.environ.get("RUN_LLM_LIVE_TESTS", "false").lower() == "true"
+_run_live = os.environ.get("RUN_LLM_GEMINI_LIVE_TESTS", "false").lower() == "true"
 
 _skip_reason = ""
 if not _run_live:
-    _skip_reason = "RUN_LLM_LIVE_TESTS is not set to true in backend/.env"
+    _skip_reason = "RUN_LLM_GEMINI_LIVE_TESTS is not set to true in backend/.env"
 elif not _api_key:
     _skip_reason = "LLM_API_KEY is not set in backend/.env"
 
