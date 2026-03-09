@@ -12,8 +12,16 @@ Any agent (GitHub Copilot, Claude, Codex, etc.) should consult these before perf
 
 ---
 
-## Git & GitHub
+## Features
 
 | Skill | Description |
 |-------|-------------|
-| [GitHub PR with `gh` CLI](git/pr.md) | Create, edit, and manage pull requests using the `gh` CLI — includes workarounds for known issues |
+| [ship_feature](features/ship_feature.md) | Full lifecycle for shipping a new feature: worktree setup, research, plan, implement, PR |
+| [iterate_feature_pr](features/iterate_feature_pr.md) | Apply changes to an existing open PR based on review feedback or new instructions |
+
+## Git Usage
+
+| Skill | Description |
+|-------|-------------|
+| [GitHub PR with `gh` CLI](git-usage/pr.md) | Create, edit, and manage pull requests — includes workarounds for known issues |
+| [Commit messages](git-usage/commits.md) | Commit message format, types, and pre-commit hook notes |
