@@ -61,9 +61,10 @@ Pydantic is used only at the API boundary (request/response serialization).
 |----------|--------|-----------|
 | Backend framework | FastAPI | Async, typed, easy to test |
 | Package manager | uv | Fast, deterministic, replaces pip+venv |
-| STT provider | Deepgram | Free tier, word-level confidence |
-| LLM provider | OpenAI | GPT-4o, structured output support |
-| Pronunciation assessment | Azure Cognitive Services | Phoneme-level scoring |
+| Primary analysis provider | Azure Cognitive Services PA | Returns STT + word accuracy + phoneme scores in one call — needed for per-phoneme feedback |
+| STT fallback provider | Deepgram | Free tier, word-level confidence; used when Azure is not configured (no phoneme data) |
+| LLM provider | OpenAI gpt-4o-mini | Structured output support; prompt includes phoneme scores when available |
+| Pipeline data model | PronunciationResult (single) | Azure PA returns PronunciationResult directly; Deepgram TranscriptionResult is adapted by service layer |
 | Domain models | dataclasses | No validation overhead in core layer |
 | Frontend framework | Next.js (App Router) | TBD — not started yet |
 
@@ -73,5 +74,4 @@ Pydantic is used only at the API boundary (request/response serialization).
 
 - How the frontend calls the backend (REST vs WebSocket for streaming audio)
 - Error response schema for the API (problem+json vs custom)
-- Whether pronunciation assessment result feeds directly into LLM prompt or goes through a service layer
 - Frontend state management (if needed beyond RSC)

@@ -24,7 +24,12 @@ See [AGENTS.md](../AGENTS.md) for the full workflow definition.
 
 ## Backend Features
 
-### F-000 - Backend Project Setup
+> **Implementation status:**
+> ✅ F-000 · ✅ F-001 · ✅ F-011 · ✅ F-002 · ✅ F-003 · 🔜 F-004 (next) · ⬜ F-005
+
+---
+
+### F-000 - Backend Project Setup ✅ Done
 **Priority:** P0 - must exist before any other backend feature
 **Slug:** Backend-setup
 
@@ -46,66 +51,128 @@ foundation every other backend feature builds on.
 
 ---
 
-### F-001 - Deepgram STT Provider
+### F-001 - Deepgram STT Provider ✅ Done
 **Priority:** P0
 **Slug:** deepgram-stt-provider
 
-Define the SpeechToTextProvider abstract interface and implement it with Deepgram (free tier).
-Unit-tested with a mocked Deepgram response - no real API call required in tests.
+Define the SpeechToTextProvider abstract interface and implement it with Deepgram.
+In the final pipeline Deepgram acts as a **fallback adapter** when Azure is not
+configured — it returns word-level confidence but no phoneme scores.
 Returns a TranscriptionResult with full transcript and word-level confidence.
 
 **Scope:**
 - Define abstract SpeechToTextProvider in backend/core/interfaces/stt.py
-- Define TranscriptionResult and WordResult data models in backend/core/models/
+- Define TranscriptionResult, WordResult, PhonemeScore models in backend/core/models/transcription.py
 - Implement DeepgramSTTProvider in backend/providers/deepgram_stt.py
-- Provider selected via env var (STT_PROVIDER=deepgram)
 - Unit tests: mock Deepgram SDK response, assert TranscriptionResult fields
-- Interface contract: transcribe(audio_bytes: bytes) -> TranscriptionResult
+- Interface contract: `transcribe(audio_bytes: bytes) -> TranscriptionResult`
 
-**Data models (to implement):**
-`python
+**Implemented models:**
+```python
+@dataclass
+class PhonemeScore:
+    phoneme: str            # ARPAbet symbol, e.g. "W"
+    score: float            # 0.0 - 1.0
+
 @dataclass
 class WordResult:
     word: str
     confidence: float       # 0.0 - 1.0
     start_time: float | None
     end_time: float | None
+    error_type: str | None  # "None" | "Mispronunciation" | "Omission" | "Insertion" (Azure only)
+    phoneme_scores: list[PhonemeScore] | None  # per-phoneme scores (Azure); None for Deepgram
 
 @dataclass
 class TranscriptionResult:
     transcript: str
     words: list[WordResult]
-`
+```
 
 **High-level error/failure modes:**
 - Invalid or missing DEEPGRAM_API_KEY
 - Request timeout
 - Unsupported audio format
 - No speech detected in audio (empty transcript)
-- Deepgram quota exceeded
 
 ---
 
-### F-002 - Text Comparison Engine
+### F-011 - Azure Pronunciation Assessment Provider ✅ Done
+**Priority:** P0 — chosen as primary provider
+**Slug:** pronunciation-assessment-provider
+
+Define the `PronunciationAssessmentProvider` abstract interface and implement with
+Azure Cognitive Services Pronunciation Assessment. Receives audio + expected text and
+returns per-word and per-phoneme scores. This is the **primary analysis path**: Azure
+replaces the need for a separate STT call — it returns transcription, word accuracy,
+and phoneme-level detail in a single pass.
+
+**Why Azure over Deepgram as primary:**
+Deepgram returns only word-level confidence. Azure returns word accuracy + phoneme-level
+scores, which are required to show the user _which phoneme_ they mispronounced — the core
+value of the product. The `phoneme_scores` data in `WordResult` is what drives the
+per-word phoneme diff display in the frontend. Deepgram remains available as a fallback
+adapter (no phoneme data) when Azure is not configured.
+
+This is NOT a type of STT. STT converts audio → text. Pronunciation Assessment scores
+how accurately the user pronounced the expected text.
+
+**Scope:**
+- Define abstract `PronunciationAssessmentProvider` in `backend/core/interfaces/pronunciation.py`
+- Define `PronunciationResult` in `backend/core/models/pronunciation.py`
+- Implement `AzurePronunciationProvider` in `backend/providers/azure_pronunciation.py`
+- Provider selected via `PRONUNCIATION_PROVIDER=azure` env var (`deepgram` as fallback)
+- Unit tests: mock Azure SDK response, assert PronunciationResult fields
+- Live test: `test_azure_pronunciation_live.py` with real `.wav` fixture
+
+**Implemented models:**
+```python
+@dataclass
+class PronunciationResult:
+    accuracy_score: float       # 0.0 - 100.0
+    fluency_score: float        # 0.0 - 100.0
+    completeness_score: float   # 0.0 - 100.0
+    prosody_score: float | None # 0.0 - 100.0
+    words: list[WordResult]     # WordResult.phoneme_scores populated by Azure
+```
+
+**Interface contract:**
+```python
+def assess(self, audio_bytes: bytes, expected_text: str) -> PronunciationResult: ...
+```
+
+**High-level error/failure modes:**
+- Invalid or missing AZURE_SPEECH_KEY / AZURE_SPEECH_REGION
+- Audio format not supported (WAV PCM 16kHz 16-bit mono required)
+- Provider returns empty or malformed response
+
+---
+
+### F-002 - Text Comparison Engine ✅ Done
 **Priority:** P0
 **Slug:** text-comparison-engine
 
-Pure Python module that diffs the expected sentence against a TranscriptionResult.
-Uses word-level confidence from TranscriptionResult alongside sequence diff to classify
-each word as: ok, missing, inserted, or mispronounced (wrong word or confidence below threshold).
-Returns a structured DiffResult. No external API calls - fully deterministic and unit-testable.
+Pure Python module that diffs the expected sentence against a PronunciationResult.
+Uses word-level confidence and phoneme scores alongside sequence diff to classify
+each word as: ok, missing, inserted, or mispronounced. Returns a structured DiffResult.
+No external API calls — fully deterministic and unit-testable.
+
+Note: the current `compare()` signature still accepts `(expected_text, transcription_result,
+pronunciation_result=None)`. F-004 simplifies this to a single `result: PronunciationResult`
+parameter — the Deepgram adapter lives in the service layer.
 
 **Scope:**
-- Input: expected_text (str) + transcription_result (TranscriptionResult)
+- Input: expected_text (str) + transcription_result (TranscriptionResult) + optional PronunciationResult
 - Normalize both sides (lowercase, strip punctuation) before comparison
 - Use sequence diff (difflib.SequenceMatcher) to align word sequences
 - Classify each diff entry: ok / missing / inserted / mispronounced
 - Mispronounced = word present but confidence below configurable threshold (default 0.7)
+- Merge per-word phoneme_scores from PronunciationResult into each matching DiffEntry
 - Return DiffResult (list of DiffEntry)
-- Full unit test coverage with synthetic input (no API needed)
+- Full unit test coverage with synthetic input
 
-**Data models (to implement):**
-`python
+**Implemented models:**
+```python
 @dataclass
 class DiffEntry:
     expected_word: str | None
@@ -113,27 +180,28 @@ class DiffEntry:
     status: str             # "ok" | "missing" | "inserted" | "mispronounced"
     confidence: float | None
     expected_phonemes: list[str] | None  # ARPAbet from cmudict, e.g. ["W", "ER1", "L", "D"]
+    phoneme_scores: list[PhonemeScore] | None  # actual per-phoneme scores from Azure PA
 
 @dataclass
 class DiffResult:
     entries: list[DiffEntry]
-`
+```
 
 **High-level error/failure modes:**
-- Empty TranscriptionResult (no words)
+- Empty PronunciationResult (no words)
 - Expected text has no recognizable words after normalization
 - All words classified as mispronounced (likely wrong language)
 
 ---
 
-### F-003 - LLM Feedback Generator
+### F-003 - LLM Feedback Generator ✅ Done
 **Priority:** P0
 **Slug:** llm-feedback-generator
 
 Define the LLMProvider abstract interface and implement it with OpenAI gpt-4o-mini.
-Receives the full context: expected_text + DiffResult.
-Produces the feedback JSON (score, errors[], suggestions[]).
-Provider is swappable via config - domain logic must not reference OpenAI directly.
+Receives the full context: expected_text + DiffResult (including phoneme scores when
+available from Azure). Produces the feedback JSON (score, errors[], suggestions[]).
+Provider is swappable via config — domain logic must not reference OpenAI directly.
 
 **Scope:**
 - Define abstract LLMProvider in backend/core/interfaces/llm.py
@@ -142,57 +210,39 @@ Provider is swappable via config - domain logic must not reference OpenAI direct
 - Prompt includes: expected text, per-word diff status, confidence, and phoneme scores when available
 - Validate response is JSON and matches feedback schema before returning
 - Unit tests: mock OpenAI response, assert feedback JSON structure
-- Interface contract: generate_feedback(expected_text, diff_result) -> dict
+- Interface contract: `generate_feedback(expected_text, diff_result) -> dict`
 
 **High-level error/failure modes:**
 - Invalid or missing OPENAI_API_KEY
 - OpenAI timeout
 - Response is not valid JSON
 - Score outside 0-100 range
-- Suggestions list is empty or None
 
 ---
 
-### F-004 - Core Pipeline Service (Integration Test)
-**Priority:** P0 - built after F-001, F-002, F-003 are individually tested
+### F-004 - Core Pipeline Service 🔜 Next
+**Priority:** P0 - built after F-001, F-011, F-002, F-003 are individually done
 **Slug:** core-pipeline-service
 
-Application service that wires STT/PA + ComparisonEngine + LLM into a single
-`PronunciationService.analyze(audio_bytes, expected_text) -> feedback_json` call.
-The pipeline uses `PronunciationResult` as the single shared structure — no
-`TranscriptionResult` in the core flow.
+Application service that wires Azure PA (or Deepgram fallback) + ComparisonEngine + LLM
+into a single `PronunciationService.analyze(audio_bytes, expected_text) -> feedback_json`
+call. The pipeline uses `PronunciationResult` as the single shared structure throughout.
+
+Note: `DiffEntry.phoneme_scores` and `_merge_phoneme_scores()` already exist (done as
+part of F-002 implementation). This feature focuses on the service layer and cleaning
+up the `compare()` signature.
 
 ---
 
-**Architecture decision: single result model**
+**Provider strategy: Azure primary, Deepgram as fallback adapter**
 
-All domain models were unified in F-002/F-011/F-012:
-- `WordResult` (in `core/models/transcription.py`) holds word + confidence + optional phoneme_scores
-- `PronunciationResult` (in `core/models/pronunciation.py`) holds overall scores + `words: list[WordResult]`
-- `WordPronunciationResult` was removed — `WordResult` is used everywhere
-
-`TextComparisonEngine.compare()` currently accepts `(expected_text, transcription_result, pronunciation_result=None)`.
-This feature **changes that signature** to a single:
-```python
-def compare(self, expected_text: str, result: PronunciationResult) -> DiffResult
-```
-
-The `_merge_phoneme_scores()` helper is deleted — phoneme_scores already live in
-`WordResult` when they come from Azure.
-
----
-
-**Provider strategy: Azure only for PA, Deepgram adapter for STT-only**
-
-Two configurations are supported by the pipeline:
-
-**Option A — Azure (full PA):**
+**Option A — Azure (default, `PRONUNCIATION_PROVIDER=azure`):**
 ```
 audio -> AzurePronunciationProvider.assess() -> PronunciationResult
   (WordResult has confidence + error_type + phoneme_scores)
 ```
 
-**Option B — Deepgram (STT only, no phonemes):**
+**Option B — Deepgram fallback (`PRONUNCIATION_PROVIDER=deepgram`):**
 ```
 audio -> DeepgramSTTProvider.transcribe() -> TranscriptionResult
   -> _transcription_to_pronunciation_result() -> PronunciationResult
@@ -207,11 +257,9 @@ def _transcription_to_pronunciation_result(t: TranscriptionResult) -> Pronunciat
         fluency_score=t.confidence * 100,
         completeness_score=100.0,
         prosody_score=None,
-        words=t.words,  # WordResult, phoneme_scores=None
+        words=t.words,  # phoneme_scores=None
     )
 ```
-
-Active provider selected via env var: `PRONUNCIATION_PROVIDER=azure|deepgram`
 
 ---
 
@@ -219,7 +267,7 @@ Active provider selected via env var: `PRONUNCIATION_PROVIDER=azure|deepgram`
 - `PronunciationService` in `backend/core/services/pronunciation_service.py`
 - Update `TextComparisonEngine.compare()` signature: remove `transcription_result` and
   `pronunciation_result` params, replace with single `result: PronunciationResult`
-- Update `_merge_phoneme_scores()`: delete it — `phoneme_scores` is already on `WordResult`
+- Delete `_merge_phoneme_scores()` — `phoneme_scores` is already on `WordResult` from Azure
 - Implement `_transcription_to_pronunciation_result()` adapter in service layer
 - `PronunciationService.analyze(audio_bytes, expected_text) -> dict` orchestrates:
   1. Call active provider → `PronunciationResult`
@@ -251,100 +299,41 @@ Active provider selected via env var: `PRONUNCIATION_PROVIDER=azure|deepgram`
 HTTP POST endpoint that accepts multipart/form-data (audio file + expected_text string),
 calls PronunciationService, and returns feedback JSON. Includes input validation and
 structured error responses. This is the integration point between frontend and backend.
+The response includes per-word `phoneme_scores` so the frontend can highlight individual
+phonemes (expected vs spoken).
 
 **Scope:**
 - POST /analyze: audio_file (WAV/WebM) + expected_text (string, max 500 chars)
-- Response: feedback JSON (schema from PRD section 6)
+- Response includes per-word diff entries with `phoneme_scores` when available (Azure path)
 - 400 for validation errors, 422 for pipeline failures, 504 for timeout
 - CORS configured for local frontend dev (localhost:3000)
 - Integration test using httpx TestClient
 
+**Response schema (example with Azure phoneme data):**
+```json
+{
+  "score": 85,
+  "errors": [
+    {
+      "word": "world",
+      "status": "mispronounced",
+      "phoneme_scores": [
+        {"phoneme": "W",   "score": 0.95},
+        {"phoneme": "ER1", "score": 0.42},
+        {"phoneme": "L",   "score": 0.88},
+        {"phoneme": "D",   "score": 0.71}
+      ]
+    }
+  ],
+  "suggestions": ["Focus on the 'ER' vowel sound in 'world'"]
+}
+```
+
 **High-level error/failure modes:**
 - Missing required fields
 - Audio file too large or wrong format
-- STT or LLM downstream failure surfaced as structured HTTP error
+- Pipeline failure surfaced as structured HTTP error
 - Request timeout (> 10 seconds)
-
----
-
-### F-011 - Pronunciation Assessment Provider
-**Priority:** P1
-**Slug:** pronunciation-assessment-provider
-
-Define a `PronunciationAssessmentProvider` abstract interface — parallel to but separate from
-`SpeechToTextProvider`. Receives audio + expected text and returns per-word and per-phoneme
-pronunciation scores. Implements with Speechace (2.5 hrs/month free) as primary and
-Azure Pronunciation Assessment (5 hrs/month free) as alternative.
-
-This is NOT a type of STT. STT converts audio → text. Pronunciation Assessment
-scores how accurately the user pronounced the expected text.
-
-**Scope:**
-- Define abstract `PronunciationAssessmentProvider` in `backend/core/interfaces/pronunciation.py`
-- Define `PhonemeScore`, `WordPronunciationResult`, `PronunciationResult` in `backend/core/models/`
-- Implement `SpeechacePronunciationProvider` in `backend/providers/speechace_pronunciation.py`
-- Implement `AzurePronunciationProvider` in `backend/providers/azure_pronunciation.py`
-- Provider selected via `PRONUNCIATION_PROVIDER=speechace|azure` env var
-- Unit tests: mock API responses, assert PronunciationResult fields
-
-**Data models (to implement):**
-`python
-@dataclass
-class PhonemeScore:
-    phoneme: str        # ARPAbet symbol, e.g. "W"
-    score: float        # 0.0 - 1.0
-
-@dataclass
-class WordPronunciationResult:
-    word: str
-    score: float            # 0.0 - 1.0
-    phoneme_scores: list[PhonemeScore]
-
-@dataclass
-class PronunciationResult:
-    overall_score: float
-    fluency_score: float | None
-    words: list[WordPronunciationResult]
-`
-
-**Interface contract:**
-`python
-def assess(self, audio_bytes: bytes, expected_text: str) -> PronunciationResult: ...
-`
-
-**Free tier comparison:**
-| Provider | Free tier | Phoneme scores | Notes |
-|----------|-----------|---------------|-------|
-| Speechace | 2.5 hrs/month | ✅ | Language-learning oriented |
-| Azure PA | 5 hrs/month | ✅ | Also gives stress, prosody, syllable |
-
-**High-level error/failure modes:**
-- Invalid or missing API key
-- Audio format not supported
-- Expected text too long for provider limits
-- Provider returns empty or malformed response
-
----
-
-### F-012 - Pronunciation Pipeline Integration
-**Priority:** P1
-**Slug:** pronunciation-pipeline-integration
-
-Enrich `DiffResult` with real per-phoneme scores from `PronunciationAssessmentProvider`
-by merging `PronunciationResult` into the comparison engine output. Update
-`PronunciationService` to optionally call the PA provider alongside STT.
-
-**Scope:**
-- Update `DiffEntry` to hold `phoneme_scores: list[PhonemeScore] | None` (actual scores from PA)
-- Update `TextComparisonEngine.compare()` to accept optional `PronunciationResult` and
-  merge per-word phoneme scores into the matching `DiffEntry`
-- Update `PronunciationService` to call `PronunciationAssessmentProvider` when configured
-- Update LLM prompt to include phoneme-level detail when available
-- Integration tests with mocked PA provider
-
-**High-level error/failure modes:**
-- PA provider word list doesn't align with DiffResult (handle gracefully, best-effort merge)
-- PA provider disabled/not configured (pipeline continues with phonemes=None)
 
 ---
 
@@ -399,11 +388,15 @@ Submits audio to backend POST /analyze on stop.
 Displays the feedback JSON returned by the backend:
 - Overall score (0-100) with visual indicator
 - Sentence with problematic words highlighted inline
+- Per-word phoneme breakdown: expected phonemes vs actual scores
 - 1-3 improvement suggestions as a list
 
 **Scope:**
 - Score display (number + color coding: green >= 80, yellow 50-79, red < 50)
 - Word-level highlighting in the original sentence (color per error type)
+- On hover/tap of a highlighted word: show phoneme breakdown — which phonemes
+  were ok and which were below threshold (uses `phoneme_scores` from API response).
+  When Azure data is unavailable (Deepgram fallback), phoneme breakdown is hidden.
 - Suggestions list
 - Re-record button to try the same sentence again
 - Success state when score is 100 / no errors
@@ -412,6 +405,7 @@ Displays the feedback JSON returned by the backend:
 - Backend returns error response
 - feedback JSON has missing or unexpected fields
 - No errors in response (score 100) - explicit success state required
+- `phoneme_scores` absent (Deepgram fallback) — phoneme panel hidden gracefully
 
 ---
 
@@ -468,4 +462,4 @@ frontend (npm install, env vars, run dev). .env.example files for both.
 | D-004 | Audio history / replay         | Out of MVP scope                             |
 | D-005 | Mobile native app              | Out of MVP scope                             |
 | D-006 | Streaming feedback             | Out of MVP scope                             |
-| D-007 | Phoneme-level analysis         | Out of MVP scope                             |
+| D-007 | Phoneme-level display          | Phoneme data flows through pipeline (Azure); display promoted to F-008 scope |
