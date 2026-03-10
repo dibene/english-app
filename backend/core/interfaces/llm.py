@@ -20,17 +20,18 @@ class LLMProvider(ABC):
 
     @abstractmethod
     def generate_feedback(self, expected_text: str, diff_result: DiffResult) -> dict[str, Any]:
-        """Generate structured pronunciation feedback.
+        """Generate pronunciation improvement suggestions via LLM.
+
+        The LLM is responsible only for suggestions. Score and per-word phoneme
+        data are derived directly from the pronunciation assessment provider and
+        assembled by PronunciationService.
 
         Args:
             expected_text: The sentence the user was supposed to pronounce.
             diff_result: Word-level comparison result from TextComparisonEngine.
 
         Returns:
-            dict with keys:
-                score (int): Overall pronunciation score 0-100.
-                errors (list[dict]): Per-word issues, each with "word", "issue",
-                    and "suggestion" keys.
+            dict with key:
                 suggestions (list[str]): 1-3 overall improvement tips.
 
         Raises:

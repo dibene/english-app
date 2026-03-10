@@ -24,7 +24,7 @@ You will receive:
 - A word-by-word comparison of what the student actually said, including per-phoneme scores
   when available (scale 0-100; lower means more difficulty).
 
-Your task is to analyze the differences and give concise pronunciation feedback.
+Your task is to provide 1 to 3 short, actionable improvement tips focused on pronunciation.
 
 Guidelines:
 - Focus only on pronunciation, not grammar or vocabulary.
@@ -39,20 +39,10 @@ Guidelines:
 
 Respond ONLY with a JSON object that matches this exact schema:
 {
-  "score": <integer 0-100>,
-  "errors": [
-    {
-      "word": "<expected word>",
-      "issue": "<mispronounced|missing|inserted>",
-      "suggestion": "<short, actionable tip>"
-    }
-  ],
   "suggestions": ["<tip 1>", "<tip 2>"]
 }
 
 Rules:
-- score must be an integer between 0 and 100.
-- errors must be a list (empty list if none).
 - suggestions must be a list of 1 to 3 overall improvement tips.
 - Do not include any text outside the JSON object.
 """
@@ -79,20 +69,6 @@ def _build_user_prompt(expected_text: str, diff_result: DiffResult) -> str:
 
 def _validate_schema(data: dict[str, Any]) -> None:
     """Raise LLMFeedbackError if the feedback dict does not match the expected schema."""
-    if "score" not in data:
-        raise LLMFeedbackError("LLM response missing required field: 'score'")
-    if not isinstance(data["score"], int):
-        # Accept float that is a whole number (e.g. 85.0 → coerce)
-        if isinstance(data["score"], float) and data["score"].is_integer():
-            data["score"] = int(data["score"])
-        else:
-            raise LLMFeedbackError(
-                f"LLM response 'score' must be an integer, got {type(data['score']).__name__}"
-            )
-    if not (0 <= data["score"] <= 100):
-        raise LLMFeedbackError(f"LLM response 'score' out of range [0, 100]: {data['score']}")
-    if "errors" not in data or not isinstance(data["errors"], list):
-        raise LLMFeedbackError("LLM response missing or invalid field: 'errors' (must be a list)")
     if "suggestions" not in data or not isinstance(data["suggestions"], list):
         raise LLMFeedbackError(
             "LLM response missing or invalid field: 'suggestions' (must be a list)"
@@ -159,14 +135,14 @@ class OpenAILLMProvider(LLMProvider):
         )
 
     def generate_feedback(self, expected_text: str, diff_result: DiffResult) -> dict[str, Any]:
-        """Generate structured pronunciation feedback via OpenAI.
+        """Generate pronunciation improvement suggestions via OpenAI.
 
         Args:
             expected_text: The sentence the user was supposed to pronounce.
             diff_result: Word-level comparison result from TextComparisonEngine.
 
         Returns:
-            dict with keys: score (int), errors (list[dict]), suggestions (list[str]).
+            dict with key: suggestions (list[str]).
 
         Raises:
             LLMFeedbackError: If the API call fails, the response is not valid
@@ -205,8 +181,7 @@ class OpenAILLMProvider(LLMProvider):
 
         _validate_schema(data)
         logger.debug(
-            "generate_feedback result: score=%s n_errors=%d",
-            data.get("score"),
-            len(data.get("errors", [])),
+            "generate_feedback result: n_suggestions=%d",
+            len(data.get("suggestions", [])),
         )
         return data

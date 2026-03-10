@@ -48,8 +48,13 @@ class PronunciationService:
             expected_text: The sentence the user was supposed to pronounce.
 
         Returns:
-            dict with keys: score (int), errors (list), suggestions (list).
-            When enable_llm=False, suggestions is always an empty list.
+            dict with keys:
+                score (int): Overall accuracy score 0-100 from the PA provider.
+                words (list[dict]): Per-word detail for every entry in the diff,
+                    including expected_phonemes and phoneme_scores so the frontend
+                    can render expected vs. spoken phoneme comparisons.
+                suggestions (list[str]): 1-3 LLM-generated improvement tips.
+                    Empty list when enable_llm=False.
 
         Raises:
             PronunciationError: If the pronunciation provider fails.
@@ -58,15 +63,32 @@ class PronunciationService:
         result = self._pronunciation_provider.assess(audio_bytes, expected_text)
         diff_result = self._comparison_engine.compare(expected_text, result)
 
+        words = [
+            {
+                "expected_word": e.expected_word,
+                "spoken_word": e.spoken_word,
+                "status": e.status,
+                "confidence": e.confidence,
+                "expected_phonemes": e.expected_phonemes,
+                "phoneme_scores": (
+                    [{"phoneme": ps.phoneme, "score": ps.score} for ps in e.phoneme_scores]
+                    if e.phoneme_scores
+                    else None
+                ),
+            }
+            for e in diff_result.entries
+        ]
+
         if not self._enable_llm:
             return {
                 "score": int(result.accuracy_score),
-                "errors": [
-                    {"word": e.spoken_word or e.expected_word, "status": e.status}
-                    for e in diff_result.entries
-                    if e.status != "ok"
-                ],
+                "words": words,
                 "suggestions": [],
             }
 
-        return self._llm_provider.generate_feedback(expected_text, diff_result)
+        feedback = self._llm_provider.generate_feedback(expected_text, diff_result)
+        return {
+            "score": int(result.accuracy_score),
+            "words": words,
+            "suggestions": feedback.get("suggestions", []),
+        }

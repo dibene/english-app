@@ -28,8 +28,6 @@ from core.services.text_comparison import TextComparisonEngine
 # ---------------------------------------------------------------------------
 
 _MOCK_FEEDBACK: dict[str, Any] = {
-    "score": 85,
-    "errors": [{"word": "world", "issue": "mispronounced", "suggestion": "Focus on ER vowel"}],
     "suggestions": ["Practice the R-colored vowel"],
 }
 
@@ -75,7 +73,7 @@ def _build_service(
 
 
 def test_analyze_returns_feedback_dict() -> None:
-    """Full pipeline returns feedback dict with expected keys."""
+    """Full pipeline returns feedback dict with score, words, and suggestions keys."""
     pa_result = _make_pronunciation_result([("hello", 0.99), ("world", 0.95)])
     service = _build_service(pronunciation_result=pa_result)
 
@@ -83,20 +81,28 @@ def test_analyze_returns_feedback_dict() -> None:
 
     assert isinstance(feedback, dict)
     assert "score" in feedback
-    assert "errors" in feedback
+    assert "words" in feedback
     assert "suggestions" in feedback
-    assert isinstance(feedback["errors"], list)
+    assert isinstance(feedback["words"], list)
     assert isinstance(feedback["suggestions"], list)
+    # Each word entry must expose phoneme diff fields
+    for word in feedback["words"]:
+        assert "expected_word" in word
+        assert "spoken_word" in word
+        assert "status" in word
+        assert "expected_phonemes" in word
+        assert "phoneme_scores" in word
 
 
 def test_analyze_with_llm_disabled_skips_llm_call() -> None:
-    """When enable_llm=False, LLM provider is never called and suggestions is empty."""
+    """When enable_llm=False, LLM provider is never called; words is still populated."""
     pa_result = _make_pronunciation_result([("hello", 0.99), ("world", 0.95)])
     service = _build_service(pronunciation_result=pa_result, enable_llm=False)
 
     feedback = service.analyze(b"fake-audio", "hello world")
 
-    assert "score" in feedback
+    assert "words" in feedback
+    assert isinstance(feedback["words"], list)
     assert feedback["suggestions"] == []
     # LLM should NOT have been called
     service._llm_provider.generate_feedback.assert_not_called()  # type: ignore[attr-defined]
@@ -178,5 +184,5 @@ def test_analyze_live_azure() -> None:
 
     assert isinstance(feedback.get("score"), int)
     assert 0 <= feedback["score"] <= 100
-    assert isinstance(feedback.get("errors"), list)
+    assert isinstance(feedback.get("words"), list)
     assert isinstance(feedback.get("suggestions"), list)
