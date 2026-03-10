@@ -20,13 +20,9 @@ _live_skip_reason = (
 )
 
 from core.exceptions import LLMFeedbackError, PronunciationError
-from core.models.diff import DiffResult
 from core.models.pronunciation import PronunciationResult
-from core.models.transcription import TranscriptionResult, WordResult
-from core.services.pronunciation_service import (
-    PronunciationService,
-    _transcription_to_pronunciation_result,
-)
+from core.models.transcription import WordResult
+from core.services.pronunciation_service import PronunciationService
 from core.services.text_comparison import TextComparisonEngine
 
 # ---------------------------------------------------------------------------
@@ -53,20 +49,14 @@ def _make_pronunciation_result(words: list[tuple[str, float]]) -> PronunciationR
 
 def _build_service(
     pronunciation_result: PronunciationResult | None = None,
-    transcription_result: TranscriptionResult | None = None,
     feedback: dict[str, Any] | None = None,
+    enable_llm: bool = True,
 ) -> PronunciationService:
     """Build a PronunciationService with mocked providers."""
-    pronunciation_provider = None
-    stt_provider = None
-
-    if pronunciation_result is not None:
-        pronunciation_provider = MagicMock()
-        pronunciation_provider.assess.return_value = pronunciation_result
-
-    if transcription_result is not None:
-        stt_provider = MagicMock()
-        stt_provider.transcribe.return_value = transcription_result
+    pronunciation_provider = MagicMock()
+    pronunciation_provider.assess.return_value = pronunciation_result or _make_pronunciation_result(
+        [("hello", 0.99)]
+    )
 
     llm_provider = MagicMock()
     llm_provider.generate_feedback.return_value = feedback or _MOCK_FEEDBACK
@@ -75,7 +65,7 @@ def _build_service(
         comparison_engine=TextComparisonEngine(),
         llm_provider=llm_provider,
         pronunciation_provider=pronunciation_provider,
-        stt_provider=stt_provider,
+        enable_llm=enable_llm,
     )
 
 
@@ -84,8 +74,8 @@ def _build_service(
 # ---------------------------------------------------------------------------
 
 
-def test_analyze_returns_feedback_dict_with_azure_provider() -> None:
-    """Full pipeline via Azure path returns feedback dict with expected keys."""
+def test_analyze_returns_feedback_dict() -> None:
+    """Full pipeline returns feedback dict with expected keys."""
     pa_result = _make_pronunciation_result([("hello", 0.99), ("world", 0.95)])
     service = _build_service(pronunciation_result=pa_result)
 
@@ -99,34 +89,17 @@ def test_analyze_returns_feedback_dict_with_azure_provider() -> None:
     assert isinstance(feedback["suggestions"], list)
 
 
-def test_analyze_uses_deepgram_fallback_when_no_azure() -> None:
-    """Pipeline falls back to STT provider and adapts TranscriptionResult correctly."""
-    words = [
-        WordResult(word="hello", confidence=0.9, start_time=0.0, end_time=0.5),
-        WordResult(word="world", confidence=0.8, start_time=0.6, end_time=1.0),
-    ]
-    transcription = TranscriptionResult(transcript="hello world", confidence=0.85, words=words)
-    service = _build_service(transcription_result=transcription)
+def test_analyze_with_llm_disabled_skips_llm_call() -> None:
+    """When enable_llm=False, LLM provider is never called and suggestions is empty."""
+    pa_result = _make_pronunciation_result([("hello", 0.99), ("world", 0.95)])
+    service = _build_service(pronunciation_result=pa_result, enable_llm=False)
 
     feedback = service.analyze(b"fake-audio", "hello world")
 
     assert "score" in feedback
-    assert "errors" in feedback
-    assert "suggestions" in feedback
-
-
-def test_adapter_converts_transcription_to_pronunciation_result() -> None:
-    """_transcription_to_pronunciation_result maps confidence correctly."""
-    words = [WordResult(word="hello", confidence=0.9, start_time=None, end_time=None)]
-    t = TranscriptionResult(transcript="hello", confidence=0.75, words=words)
-
-    result = _transcription_to_pronunciation_result(t)
-
-    assert result.accuracy_score == pytest.approx(75.0)
-    assert result.fluency_score == pytest.approx(75.0)
-    assert result.completeness_score == 100.0
-    assert result.prosody_score is None
-    assert result.words is words  # same list, not copied
+    assert feedback["suggestions"] == []
+    # LLM should NOT have been called
+    service._llm_provider.generate_feedback.assert_not_called()  # type: ignore[attr-defined]
 
 
 def test_analyze_propagates_pronunciation_error() -> None:
@@ -164,14 +137,13 @@ def test_analyze_propagates_llm_error() -> None:
         service.analyze(b"audio", "hello")
 
 
-def test_service_requires_at_least_one_provider() -> None:
-    """Constructing PronunciationService with both providers None raises ValueError."""
-    with pytest.raises(ValueError, match="At least one"):
-        PronunciationService(
+def test_service_requires_pronunciation_provider() -> None:
+    """PronunciationService requires a pronunciation_provider (no longer optional)."""
+    # TypeError is raised by Python when the required positional arg is missing.
+    with pytest.raises(TypeError):
+        PronunciationService(  # type: ignore[call-arg]
             comparison_engine=TextComparisonEngine(),
             llm_provider=MagicMock(),
-            pronunciation_provider=None,
-            stt_provider=None,
         )
 
 

@@ -1,52 +1,44 @@
 """Application service that orchestrates the pronunciation analysis pipeline."""
 
+# NOTE: STT-only path (DeepgramSTTProvider without phoneme analysis)
+# If needed in the future, adapt TranscriptionResult → PronunciationResult in an
+# intermediate service or adapter before passing the result into PronunciationService.
+# See removed _transcription_to_pronunciation_result for reference.
+
 from typing import Any
 
 from core.interfaces.llm import LLMProvider
 from core.interfaces.pronunciation import PronunciationAssessmentProvider
-from core.interfaces.stt import SpeechToTextProvider
-from core.models.pronunciation import PronunciationResult
-from core.models.transcription import TranscriptionResult
 from core.services.text_comparison import TextComparisonEngine
 
-
-def _transcription_to_pronunciation_result(t: TranscriptionResult) -> PronunciationResult:
-    """Adapt a TranscriptionResult (Deepgram) to PronunciationResult for the pipeline.
-
-    WordResult.phoneme_scores will be None — Deepgram does not provide phoneme data.
-    """
-    return PronunciationResult(
-        accuracy_score=t.confidence * 100,
-        fluency_score=t.confidence * 100,
-        completeness_score=100.0,
-        prosody_score=None,
-        words=t.words,
-    )
+# LLM skip thresholds (future use):
+# Skip LLM feedback when accuracy_score >= this value AND no phoneme has a low score.
+_LLM_SKIP_ACCURACY_THRESHOLD = 80
 
 
 class PronunciationService:
     """Orchestrates pronunciation assessment, text comparison, and LLM feedback.
 
-    Uses Azure PronunciationAssessmentProvider as the primary path. When
-    pronunciation_provider is None, falls back to DeepgramSTTProvider and
-    adapts its TranscriptionResult to a PronunciationResult.
+    Args:
+        comparison_engine: Text comparison engine.
+        llm_provider: LLM provider for generating feedback.
+        pronunciation_provider: Pronunciation assessment provider (required).
+        enable_llm: When False the LLM call is skipped and suggestions are empty.
+            Useful to stay within daily LLM request limits.
+            Future: auto-skip when accuracy_score >= 80 and no low-scoring phonemes.
     """
 
     def __init__(
         self,
         comparison_engine: TextComparisonEngine,
         llm_provider: LLMProvider,
-        pronunciation_provider: PronunciationAssessmentProvider | None = None,
-        stt_provider: SpeechToTextProvider | None = None,
+        pronunciation_provider: PronunciationAssessmentProvider,
+        enable_llm: bool = True,
     ) -> None:
-        if pronunciation_provider is None and stt_provider is None:
-            raise ValueError(
-                "At least one of pronunciation_provider or stt_provider must be provided."
-            )
         self._pronunciation_provider = pronunciation_provider
-        self._stt_provider = stt_provider
         self._comparison_engine = comparison_engine
         self._llm_provider = llm_provider
+        self._enable_llm = enable_llm
 
     def analyze(self, audio_bytes: bytes, expected_text: str) -> dict[str, Any]:
         """Analyze pronunciation and return structured feedback.
@@ -57,16 +49,24 @@ class PronunciationService:
 
         Returns:
             dict with keys: score (int), errors (list), suggestions (list).
+            When enable_llm=False, suggestions is always an empty list.
 
         Raises:
-            PronunciationError: If the pronunciation/STT provider fails.
-            LLMFeedbackError: If the LLM provider fails.
+            PronunciationError: If the pronunciation provider fails.
+            LLMFeedbackError: If the LLM provider fails (only when enable_llm=True).
         """
-        if self._pronunciation_provider is not None:
-            result = self._pronunciation_provider.assess(audio_bytes, expected_text)
-        else:
-            transcription = self._stt_provider.transcribe(audio_bytes)  # type: ignore[union-attr]
-            result = _transcription_to_pronunciation_result(transcription)
-
+        result = self._pronunciation_provider.assess(audio_bytes, expected_text)
         diff_result = self._comparison_engine.compare(expected_text, result)
+
+        if not self._enable_llm:
+            return {
+                "score": int(result.accuracy_score),
+                "errors": [
+                    {"word": e.spoken_word or e.expected_word, "status": e.status}
+                    for e in diff_result.entries
+                    if e.status != "ok"
+                ],
+                "suggestions": [],
+            }
+
         return self._llm_provider.generate_feedback(expected_text, diff_result)
