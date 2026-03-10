@@ -1,4 +1,4 @@
-"""Text comparison engine: diffs expected text against a TranscriptionResult."""
+"""Text comparison engine: diffs expected text against a PronunciationResult."""
 
 import string
 from difflib import SequenceMatcher
@@ -7,7 +7,7 @@ import cmudict
 
 from core.models.diff import DiffEntry, DiffResult
 from core.models.pronunciation import PronunciationResult
-from core.models.transcription import PhonemeScore, TranscriptionResult
+from core.models.transcription import PhonemeScore
 
 _CMUDICT: dict[str, list[list[str]]] = cmudict.dict()
 
@@ -27,28 +27,8 @@ def _get_phonemes(word: str) -> list[str] | None:
     return list(pronunciations[0])
 
 
-def _merge_phoneme_scores(
-    entries: list[DiffEntry],
-    pronunciation_result: PronunciationResult,
-) -> None:
-    """Best-effort merge of PA phoneme scores into DiffEntry list (in-place).
-
-    Matches by normalised word name. When multiple entries share the same
-    expected_word (unlikely but possible), only the first match is enriched.
-    Words present in PronunciationResult but absent from entries are ignored.
-    """
-    pa_by_word: dict[str, list[PhonemeScore]] = {
-        _normalize(w.word)[0]: w.phoneme_scores
-        for w in pronunciation_result.words
-        if _normalize(w.word)
-    }
-    for entry in entries:
-        if entry.expected_word and entry.expected_word in pa_by_word:
-            entry.phoneme_scores = pa_by_word.pop(entry.expected_word)
-
-
 class TextComparisonEngine:
-    """Compares expected text against a TranscriptionResult word by word.
+    """Compares expected text against a PronunciationResult word by word.
 
     Uses difflib.SequenceMatcher to align word sequences and classifies each
     position as ok, missing, inserted, or mispronounced.
@@ -60,31 +40,31 @@ class TextComparisonEngine:
     def compare(
         self,
         expected_text: str,
-        transcription_result: TranscriptionResult,
-        pronunciation_result: PronunciationResult | None = None,
+        result: PronunciationResult,
     ) -> DiffResult:
-        """Compare expected text against transcription and return a DiffResult.
+        """Compare expected text against a PronunciationResult and return a DiffResult.
 
         Args:
             expected_text: The sentence the user was supposed to say.
-            transcription_result: The STT output with word-level confidence.
-            pronunciation_result: Optional PA provider output. When provided,
-                per-phoneme scores are merged into each DiffEntry by word name.
+            result: The pronunciation assessment output with word-level data.
+                WordResult.phoneme_scores is populated by Azure; None for Deepgram.
 
         Returns:
             DiffResult with a DiffEntry for every expected or spoken word.
         """
         expected_words = _normalize(expected_text)
 
-        # Build parallel lists: normalised spoken words + their confidence scores
+        # Build parallel lists: normalised spoken words, confidences, and phoneme scores
         spoken_words: list[str] = []
-        confidences: list[float] = []
-        for wr in transcription_result.words:
+        confidences: list[float | None] = []
+        phoneme_scores_by_index: list[list[PhonemeScore] | None] = []
+        for wr in result.words:
             normalised = _normalize(wr.word)
             if not normalised:
                 continue
             spoken_words.append(normalised[0])
             confidences.append(wr.confidence)
+            phoneme_scores_by_index.append(wr.phoneme_scores)
 
         entries: list[DiffEntry] = []
 
@@ -94,8 +74,10 @@ class TextComparisonEngine:
                 for offset, (exp, spk) in enumerate(
                     zip(expected_words[i1:i2], spoken_words[j1:j2])
                 ):
-                    conf = confidences[j1 + offset]
-                    if conf < self._threshold:
+                    idx = j1 + offset
+                    conf = confidences[idx]
+                    ph_scores = phoneme_scores_by_index[idx]
+                    if conf is not None and conf < self._threshold:
                         entries.append(
                             DiffEntry(
                                 expected_word=exp,
@@ -103,6 +85,7 @@ class TextComparisonEngine:
                                 status="mispronounced",
                                 confidence=conf,
                                 expected_phonemes=_get_phonemes(exp),
+                                phoneme_scores=ph_scores,
                             )
                         )
                     else:
@@ -113,6 +96,7 @@ class TextComparisonEngine:
                                 status="ok",
                                 confidence=conf,
                                 expected_phonemes=_get_phonemes(exp),
+                                phoneme_scores=ph_scores,
                             )
                         )
 
@@ -132,12 +116,14 @@ class TextComparisonEngine:
             elif tag == "insert":
                 # Words spoken but not expected
                 for offset, spk in enumerate(spoken_words[j1:j2]):
+                    idx = j1 + offset
                     entries.append(
                         DiffEntry(
                             expected_word=None,
                             spoken_word=spk,
                             status="inserted",
-                            confidence=confidences[j1 + offset],
+                            confidence=confidences[idx],
+                            phoneme_scores=phoneme_scores_by_index[idx],
                         )
                     )
 
@@ -149,8 +135,10 @@ class TextComparisonEngine:
                 paired = min(len(exp_slice), len(spk_slice))
 
                 for k in range(paired):
-                    conf = confidences[j1 + k]
-                    if conf < self._threshold:
+                    idx = j1 + k
+                    conf = confidences[idx]
+                    ph_scores = phoneme_scores_by_index[idx]
+                    if conf is not None and conf < self._threshold:
                         entries.append(
                             DiffEntry(
                                 expected_word=exp_slice[k],
@@ -158,6 +146,7 @@ class TextComparisonEngine:
                                 status="mispronounced",
                                 confidence=conf,
                                 expected_phonemes=_get_phonemes(exp_slice[k]),
+                                phoneme_scores=ph_scores,
                             )
                         )
                     else:
@@ -177,6 +166,7 @@ class TextComparisonEngine:
                                 spoken_word=spk_slice[k],
                                 status="inserted",
                                 confidence=conf,
+                                phoneme_scores=ph_scores,
                             )
                         )
 
@@ -194,16 +184,15 @@ class TextComparisonEngine:
 
                 # Remaining spoken words without an expected counterpart -> inserted
                 for offset, spk in enumerate(spk_slice[paired:]):
+                    idx = j1 + paired + offset
                     entries.append(
                         DiffEntry(
                             expected_word=None,
                             spoken_word=spk,
                             status="inserted",
-                            confidence=confidences[j1 + paired + offset],
+                            confidence=confidences[idx],
+                            phoneme_scores=phoneme_scores_by_index[idx],
                         )
                     )
 
-        result = DiffResult(entries=entries)
-        if pronunciation_result is not None:
-            _merge_phoneme_scores(entries, pronunciation_result)
-        return result
+        return DiffResult(entries=entries)
