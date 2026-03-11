@@ -340,7 +340,7 @@ phonemes (expected vs spoken).
 ## Frontend Features
 
 > **Implementation status:**
-> 🔜 F-012 (next) · ⬜ F-006 · ⬜ F-007 · ⬜ F-008 · ⬜ F-009
+> ✅ F-012 · 🔜 F-006 (next) · ⬜ F-007
 
 ---
 
@@ -367,94 +367,60 @@ frontend feature builds on — mirrors what F-000 did for the backend.
 
 ---
 
-### F-006 - Text Input and Sentence Splitter UI
-**Priority:** P1
-**Slug:** Frontend-text-input
+### F-006 - Minimal End-to-End Flow 🔜 Next
+**Priority:** P1 - first testable end-to-end loop
+**Slug:** Frontend-minimal-e2e
 
-Next.js page where the user pastes English text. System splits into sentences and
-displays them as a numbered list. User selects one sentence to record.
+Single page that lets the user type one sentence, record audio, submit to the backend,
+and see the raw JSON response. No sentence splitting, no styled feedback UI — just a
+working pipeline you can run against the real backend immediately. The most complex
+technical piece is wiring the browser audio recording library (`RecordRTC` or native
+`MediaRecorder`) and confirming the multipart upload reaches `POST /analyze`.
+
+**Scope:**
+- Install audio recording dependency: `RecordRTC` (or confirm native `MediaRecorder` is sufficient)
+- Single `<textarea>` for sentence input (no splitting, no limit UI yet)
+- Record button: idle → recording → processing → done state machine
+- On stop: POST `(audio_blob, expected_text)` as `multipart/form-data` to `NEXT_PUBLIC_API_URL/analyze`
+- Typed API client in `lib/api.ts`: `analyze(audio: Blob, sentence: string) -> AnalyzeResponse`
+- Display raw JSON response (or error message) below the form — good enough to verify the pipeline
+- `NEXT_PUBLIC_API_URL` env var wired; `frontend/.env.local.example` updated
+- CORS verified end-to-end (local backend + local frontend)
+
+**High-level error/failure modes:**
+- Microphone permission denied
+- Browser does not support required recording API
+- Backend not running / connection refused → show clear error
+- CORS policy blocking requests
+- Audio too short (< 1 second — backend rejects it)
+
+---
+
+### F-007 - Sentence Splitter + Feedback Display UI
+**Priority:** P1
+**Slug:** Frontend-sentence-feedback
+
+Upgrade the minimal flow with sentence splitting on input and a styled feedback panel
+for the backend response. Replaces the raw JSON dump added in F-006.
 
 **Scope:**
 - Textarea with 500 char limit and counter
-- Sentence splitting (period/question/exclamation detection)
-- Sentence list with click-to-select
-- Selected sentence highlighted
+- Sentence splitting (period / question / exclamation detection)
+- Sentence list with click-to-select; selected sentence highlighted
+- Feed selected sentence into the existing recording + submit flow from F-006
+- Feedback panel replacing raw JSON:
+  - Score display (number + color coding: green ≥ 80, yellow 50–79, red < 50)
+  - Word-level highlighting in the original sentence (color per error type)
+  - On hover/tap of a highlighted word: phoneme breakdown (hidden gracefully when `phoneme_scores` absent)
+  - Suggestions list
+  - Re-record button; explicit success state when score is 100 / no errors
 
 **High-level error/failure modes:**
 - Text exceeds 500 characters
 - No sentences detected
-- Text contains no recognizable English words
-
----
-
-### F-007 - Audio Recording UI
-**Priority:** P1
-**Slug:** Frontend-audio-recording
-
-Browser-based audio recording per selected sentence (Web Audio API).
-Shows recording state (idle / recording / processing).
-Submits audio to backend POST /analyze on stop.
-
-**Scope:**
-- Record button with state machine: idle -> recording -> processing -> done
-- Max recording duration: 45 seconds (auto-stop)
-- Visual recording indicator (timer or waveform)
-- Sends (audio_blob, expected_text) as multipart/form-data to backend
-
-**High-level error/failure modes:**
-- Microphone permission denied by user
-- Browser does not support MediaRecorder API
-- Audio too short (< 1 second)
-- Recording exceeds 45 seconds
-
----
-
-### F-008 - Feedback Display UI
-**Priority:** P1
-**Slug:** Frontend-feedback-display
-
-Displays the feedback JSON returned by the backend:
-- Overall score (0-100) with visual indicator
-- Sentence with problematic words highlighted inline
-- Per-word phoneme breakdown: expected phonemes vs actual scores
-- 1-3 improvement suggestions as a list
-
-**Scope:**
-- Score display (number + color coding: green >= 80, yellow 50-79, red < 50)
-- Word-level highlighting in the original sentence (color per error type)
-- On hover/tap of a highlighted word: show phoneme breakdown — which phonemes
-  were ok and which were below threshold (uses `phoneme_scores` from API response).
-  When Azure data is unavailable (Deepgram fallback), phoneme breakdown is hidden.
-- Suggestions list
-- Re-record button to try the same sentence again
-- Success state when score is 100 / no errors
-
-**High-level error/failure modes:**
 - Backend returns error response
-- feedback JSON has missing or unexpected fields
-- No errors in response (score 100) - explicit success state required
+- `feedback JSON` has missing or unexpected fields
 - `phoneme_scores` absent (Deepgram fallback) — phoneme panel hidden gracefully
-
----
-
-### F-009 - Frontend to Backend Integration
-**Priority:** P1 - ties F-005 + F-006/007/008 together
-**Slug:** Frontend-backend-integration
-
-Wire the full frontend flow to the live backend API.
-End-to-end browser test: paste text -> select sentence -> record -> see feedback.
-
-**Scope:**
-- Typed API client module in frontend (fetch-based)
-- Error state handling in UI (backend down, timeout, validation error)
-- NEXT_PUBLIC_API_URL env var for backend URL
-- Verify CORS works end-to-end (local backend + local frontend)
-
-**High-level error/failure modes:**
-- CORS policy blocking requests
-- Backend not running (connection refused)
-- Network timeout
-- Response parsing error
 
 ---
 
@@ -490,4 +456,4 @@ frontend (npm install, env vars, run dev). .env.example files for both.
 | D-004 | Audio history / replay         | Out of MVP scope                             |
 | D-005 | Mobile native app              | Out of MVP scope                             |
 | D-006 | Streaming feedback             | Out of MVP scope                             |
-| D-007 | Phoneme-level display          | Phoneme data flows through pipeline (Azure); display promoted to F-008 scope |
+| D-007 | Phoneme-level display          | Phoneme data flows through pipeline (Azure); display promoted to F-007 scope |
