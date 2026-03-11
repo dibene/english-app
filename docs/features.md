@@ -339,6 +339,34 @@ phonemes (expected vs spoken).
 
 ## Frontend Features
 
+> **Implementation status:**
+> 🔜 F-012 (next) · ⬜ F-006 · ⬜ F-007 · ⬜ F-008 · ⬜ F-009
+
+---
+
+### F-012 - Frontend Project Setup
+**Priority:** P0 — must exist before any other frontend feature
+**Slug:** Frontend-setup
+
+Bootstrap the Next.js frontend project: scaffolding, folder structure, base dependencies,
+and a minimal health/smoke page. No domain logic yet. This is the foundation every other
+frontend feature builds on — mirrors what F-000 did for the backend.
+
+**Scope:**
+- Scaffold Next.js app in `frontend/` using `create-next-app` (TypeScript, App Router)
+- Install base dependencies: `tailwindcss`, `eslint`
+- Folder structure: `app/`, `components/`, `lib/` (typed API client placeholder)
+- Minimal root page (`app/page.tsx`) rendering a static heading — confirms the app runs
+- `frontend/.env.local.example` with `NEXT_PUBLIC_API_URL=http://localhost:8000`
+- README section documenting how to run the frontend dev server
+
+**High-level error/failure modes:**
+- Missing `.env.local` file (document clearly in README)
+- Port conflict on default port 3000 (document how to change)
+- Node version mismatch (document minimum required version)
+
+---
+
 ### F-006 - Text Input and Sentence Splitter UI
 **Priority:** P1
 **Slug:** Frontend-text-input
