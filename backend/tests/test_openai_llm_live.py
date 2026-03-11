@@ -88,30 +88,28 @@ def _make_diff_result() -> DiffResult:
 
 @skip_if_not_configured
 def test_live_returns_valid_schema(live_provider: OpenAILLMProvider) -> None:
-    """Real API call: response must have score, errors, and suggestions."""
+    """Real API call: response must have suggestions."""
     result = live_provider.generate_feedback("hello world beautiful", _make_diff_result())
 
     assert isinstance(result, dict), "response must be a dict"
-    assert "score" in result, "response must have 'score'"
-    assert "errors" in result, "response must have 'errors'"
     assert "suggestions" in result, "response must have 'suggestions'"
 
 
 @skip_if_not_configured
 def test_live_score_in_range(live_provider: OpenAILLMProvider) -> None:
-    """score must be an integer between 0 and 100."""
+    """suggestions must be a non-empty list (score is no longer returned by LLM)."""
     result = live_provider.generate_feedback("hello world beautiful", _make_diff_result())
 
-    assert isinstance(result["score"], int), f"score must be int, got {type(result['score'])}"
-    assert 0 <= result["score"] <= 100, f"score out of range: {result['score']}"
+    assert isinstance(result["suggestions"], list)
+    assert len(result["suggestions"]) >= 1
 
 
 @skip_if_not_configured
 def test_live_errors_is_list(live_provider: OpenAILLMProvider) -> None:
-    """errors must be a list (can be empty)."""
+    """suggestions is the only required field; test that it's a list."""
     result = live_provider.generate_feedback("hello world beautiful", _make_diff_result())
 
-    assert isinstance(result["errors"], list), "errors must be a list"
+    assert isinstance(result["suggestions"], list)
 
 
 @skip_if_not_configured
@@ -125,7 +123,7 @@ def test_live_suggestions_is_list(live_provider: OpenAILLMProvider) -> None:
 
 @skip_if_not_configured
 def test_live_perfect_score_for_all_ok(live_provider: OpenAILLMProvider) -> None:
-    """All-ok diff should produce a high score and empty errors list."""
+    """All-ok diff should still return suggestions (may be minimal)."""
     diff = DiffResult(
         entries=[
             DiffEntry(expected_word="hello", spoken_word="hello", status="ok", confidence=0.99),
@@ -134,7 +132,7 @@ def test_live_perfect_score_for_all_ok(live_provider: OpenAILLMProvider) -> None
     )
     result = live_provider.generate_feedback("hello world", diff)
 
-    assert result["score"] >= 80, f"all-ok diff should score >= 80, got {result['score']}"
+    assert isinstance(result["suggestions"], list)
 
 
 @skip_if_not_configured
@@ -164,7 +162,5 @@ def test_live_phoneme_scores_in_prompt_affect_response(live_provider: OpenAILLMP
     result = live_provider.generate_feedback("world", diff)
 
     assert isinstance(result, dict)
-    assert "score" in result and "errors" in result and "suggestions" in result
-    assert (
-        isinstance(result["errors"], list) and len(result["errors"]) >= 1
-    ), "expected at least one error for mispronounced word with low phoneme scores"
+    assert "suggestions" in result
+    assert isinstance(result["suggestions"], list)

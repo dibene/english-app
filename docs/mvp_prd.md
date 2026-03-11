@@ -81,41 +81,58 @@ when reading arbitrary text.
 [Frontend] -> selects sentence + records audio
            -> sends (audio_file, expected_text) -> [Backend API]
 
-[Backend] -> SpeechToTextProvider.transcribe(audio) -> TranscriptionResult
-             TranscriptionResult: { transcript: str, words: [{ word, confidence, start, end }] }
+[Backend] -> PronunciationAssessmentProvider.assess(audio, expected_text) -> PronunciationResult
+             PronunciationResult: { accuracy_score, fluency_score, completeness_score,
+                                    words: [{ word, confidence, error_type,
+                                             phoneme_scores: [{ phoneme, score }] }] }
 
-[Backend] -> ComparisonEngine.compare(expected_text, transcription_result) -> DiffResult
-             DiffResult: [{ word, status: missing|inserted|mispronounced|ok, confidence }]
+[Backend] -> ComparisonEngine.compare(expected_text, pronunciation_result) -> DiffResult
+             DiffResult: [{ expected_word, spoken_word, status, confidence,
+                            expected_phonemes: [str],       <- from cmudict
+                            phoneme_scores: [{ phoneme, score }] }]
 
-[Backend] -> LLMProvider.generate_feedback(expected_text, transcription_result, diff_result) -> feedback_json
-             LLM receives full context: what was expected, what was said (with confidence),
-             and the word-level diff - enabling accurate, grounded feedback.
+[Backend] -> LLMProvider.generate_feedback(expected_text, diff_result) -> { suggestions }
+             LLM receives: expected sentence + word-level diff (with phoneme scores)
+             LLM returns: 1-3 improvement tips only.
+             Score and per-word data come directly from the PA provider.
 
 [Backend] -> returns feedback_json -> [Frontend]
-[Frontend] -> renders score + highlighted words + suggestions -> [User]
+[Frontend] -> renders score + per-word phoneme comparison + suggestions -> [User]
 `
 
 **Data Models:**
 
 `python
 @dataclass
-class WordResult:
-    word: str
-    confidence: float       # 0.0 - 1.0 (if provided by STT)
-    start_time: float | None
-    end_time: float | None
+class PhonemeScore:
+    phoneme: str            # e.g. "W", "ER1", "L", "D"
+    score: float            # 0.0 - 100.0 (Azure HundredMark scale)
 
 @dataclass
-class TranscriptionResult:
-    transcript: str         # full spoken text
-    words: list[WordResult] # word-level detail
+class WordResult:
+    word: str
+    confidence: float | None    # 0.0 - 1.0 (if provided)
+    start_time: float | None
+    end_time: float | None
+    error_type: str | None      # "None" | "Mispronunciation" | "Omission" | "Insertion"
+    phoneme_scores: list[PhonemeScore] | None  # populated by PA providers (e.g. Azure)
+
+@dataclass
+class PronunciationResult:
+    accuracy_score: float       # 0.0 - 100.0 overall accuracy
+    fluency_score: float
+    completeness_score: float
+    prosody_score: float | None
+    words: list[WordResult]
 
 @dataclass
 class DiffEntry:
     expected_word: str | None
     spoken_word: str | None
-    status: str             # "ok" | "missing" | "inserted" | "mispronounced"
+    status: str                           # "ok" | "missing" | "inserted" | "mispronounced"
     confidence: float | None
+    expected_phonemes: list[str] | None   # e.g. ["W", "ER1", "L", "D"] from cmudict
+    phoneme_scores: list[PhonemeScore] | None  # actual scores from PA provider
 
 @dataclass
 class DiffResult:
@@ -126,12 +143,31 @@ class DiffResult:
 `json
 {
   "score": 82,
-  "errors": [
-    { "word": "pronunciation", "type": "mispronounced", "spoken_as": "prononciation" },
-    { "word": "arbitrary", "type": "missing" }
+  "words": [
+    {
+      "expected_word": "world",
+      "spoken_word": "word",
+      "status": "mispronounced",
+      "confidence": 0.55,
+      "expected_phonemes": ["W", "ER1", "L", "D"],
+      "phoneme_scores": [
+        { "phoneme": "W",   "score": 90 },
+        { "phoneme": "ER1", "score": 45 },
+        { "phoneme": "L",   "score": 80 },
+        { "phoneme": "D",   "score": 70 }
+      ]
+    },
+    {
+      "expected_word": "arbitrary",
+      "spoken_word": null,
+      "status": "missing",
+      "confidence": null,
+      "expected_phonemes": ["AA1", "R", "B", "AH0", "T", "R", "EH2", "R", "IY0"],
+      "phoneme_scores": null
+    }
   ],
   "suggestions": [
-    "Focus on the 'tion' ending - it sounds like /shen/.",
+    "Focus on the ER1 vowel in 'world' — it\u2019s the r-colored vowel /\u025d/.",
     "Try saying each syllable of 'arbitrary' slowly: ar-bi-trar-y."
   ]
 }
@@ -157,11 +193,18 @@ class DiffResult:
 - System must be STT-provider agnostic - local options (faster-whisper) are defined but deferred.
 
 ### FR-4: Pronunciation Analysis
-- Compare expected text vs. TranscriptionResult using ComparisonEngine -> DiffResult.
-- Detect: missing words, inserted words, mispronounced words (wrong word or confidence below threshold).
-- LLMProvider receives: expected_text + TranscriptionResult + DiffResult.
-- LLM has full context to generate grounded, accurate feedback.
+- Audio assessed via pluggable PronunciationAssessmentProvider interface.
+- Primary provider: Azure Cognitive Services Pronunciation Assessment (free tier).
+- Interface contract: assess(audio_bytes, expected_text) -> PronunciationResult
+- PronunciationResult includes: accuracy/fluency/completeness scores + per-word phoneme scores.
+- ComparisonEngine compares expected text vs. PronunciationResult -> DiffResult.
+  DiffResult includes: per-word status, expected phonemes (from cmudict), and actual phoneme scores.
+- LLMProvider receives expected_text + DiffResult and returns 1-3 improvement suggestions only.
+  Score and per-word phoneme data come directly from the PA provider — LLM does not produce these.
 - LLMProvider is provider-agnostic - local LLM (Ollama/Deepseek) deferred to post-MVP.
+- enable_llm flag: when False, LLM is skipped and suggestions is empty.
+  Use this to stay within daily free-tier limits. Planned auto-skip when accuracy >= 80
+  and no phonemes with low scores.
 - Output: feedback JSON schema defined in section 6.
 
 ### FR-5: Response Time
