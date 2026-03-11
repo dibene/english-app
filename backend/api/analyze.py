@@ -14,7 +14,7 @@ router = APIRouter()
 
 _MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB
 _MAX_TEXT_CHARS = 500
-_ANALYZE_TIMEOUT_SECONDS = 10.0
+_ANALYZE_TIMEOUT_SECONDS = 30.0
 _ALLOWED_CONTENT_TYPES = {
     "audio/wav",
     "audio/wave",
