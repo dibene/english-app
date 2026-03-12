@@ -14,12 +14,16 @@ router = APIRouter()
 
 _MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB
 _MAX_TEXT_CHARS = 500
-_ANALYZE_TIMEOUT_SECONDS = 10.0
+_ANALYZE_TIMEOUT_SECONDS = 30.0
 _ALLOWED_CONTENT_TYPES = {
     "audio/wav",
     "audio/wave",
     "audio/x-wav",
     "audio/webm",
+    "audio/ogg",
+    "audio/mp4",
+    "audio/mpeg",
+    "video/webm",  # Chrome sometimes reports webm as video/webm
 }
 
 
@@ -43,10 +47,34 @@ class AnalyzeResponse(BaseModel):
     suggestions: list[str]
 
 
+class FeedbackWordIn(BaseModel):
+    expected_word: str | None = None
+    spoken_word: str | None = None
+    status: str
+    confidence: float | None = None
+    expected_phonemes: list[str] | None = None
+    phoneme_scores: list[PhonemeScoreOut] | None = None
+
+
+class FeedbackSentenceIn(BaseModel):
+    expected_text: str
+    score: int
+    words: list[FeedbackWordIn]
+
+
+class FeedbackRequest(BaseModel):
+    sentences: list[FeedbackSentenceIn]
+
+
+class FeedbackResponse(BaseModel):
+    suggestions: list[str]
+
+
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(
     audio_file: UploadFile,
     expected_text: Annotated[str, Form()] = "",
+    enable_llm: Annotated[str, Form()] = "",
     service: PronunciationService = Depends(get_pronunciation_service),
 ) -> AnalyzeResponse:
     """Analyze pronunciation of uploaded audio against the expected sentence.
@@ -92,10 +120,17 @@ async def analyze(
     if len(audio_bytes) == 0:
         raise HTTPException(status_code=400, detail="Audio file must not be empty")
 
+    # --- per-request LLM override (form field overrides server default) ---
+    enable_llm_override: bool | None = None
+    if enable_llm.lower() in ("true", "1"):
+        enable_llm_override = True
+    elif enable_llm.lower() in ("false", "0"):
+        enable_llm_override = False
+
     # --- pipeline call with timeout ---
     try:
         result: dict[str, Any] = await asyncio.wait_for(
-            asyncio.to_thread(service.analyze, audio_bytes, expected_text),
+            asyncio.to_thread(service.analyze, audio_bytes, expected_text, enable_llm_override),
             timeout=_ANALYZE_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -111,3 +146,45 @@ async def analyze(
         words=[WordOut(**w) for w in result["words"]],
         suggestions=result["suggestions"],
     )
+
+
+@router.post("/feedback", response_model=FeedbackResponse)
+async def feedback(
+    request: FeedbackRequest,
+    service: PronunciationService = Depends(get_pronunciation_service),
+) -> FeedbackResponse:
+    """Generate LLM suggestions from one or more pre-computed analysis results.
+
+    Accepts a list of sentence results (each with score + word-level detail) that
+    the frontend has accumulated from prior /analyze calls.
+    Sends all of them to the LLM in a single request so the model can consider the
+    full session context when producing suggestions.
+
+    Args:
+        request: FeedbackRequest with a list of FeedbackSentenceIn.
+        service: Injected PronunciationService.
+
+    Returns:
+        FeedbackResponse with a suggestions list.
+
+    Raises:
+        HTTPException 400: Empty sentences list.
+        HTTPException 422: LLM call failed.
+        HTTPException 503: LLM is disabled on this server.
+    """
+    if not request.sentences:
+        raise HTTPException(status_code=400, detail="sentences must not be empty")
+
+    try:
+        suggestions: list[str] = await asyncio.wait_for(
+            asyncio.to_thread(service.generate_feedback_for_session, request.sentences),
+            timeout=_ANALYZE_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="LLM feedback timed out. Please try again.")
+    except LLMFeedbackError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return FeedbackResponse(suggestions=suggestions)

@@ -25,7 +25,7 @@ See [AGENTS.md](../AGENTS.md) for the full workflow definition.
 ## Backend Features
 
 > **Implementation status:**
-> ✅ F-000 · ✅ F-001 · ✅ F-011 · ✅ F-002 · ✅ F-003 · 🔜 F-004 (next) · ⬜ F-005
+> ✅ F-000 · ✅ F-001 · ✅ F-011 · ✅ F-002 · ✅ F-003 · ✅ F-004 · ✅ F-005 · ✅ F-008 (partial — endpoint done, frontend client pending) · ⬜ next
 
 ---
 
@@ -334,6 +334,55 @@ phonemes (expected vs spoken).
 - Audio file too large or wrong format
 - Pipeline failure surfaced as structured HTTP error
 - Request timeout (> 10 seconds)
+
+---
+
+### F-008 - Batch LLM Feedback Endpoint ⬜ Backlog
+**Priority:** P1
+**Slug:** batch-llm-feedback
+
+Decouple the LLM coaching step from the fast per-sentence `/analyze` call.
+The frontend accumulates per-sentence analysis results (score + word detail) locally
+and sends them all at once to `POST /feedback`. The LLM sees the full session context
+in a single request — cheaper (1 call vs N calls), faster perceived UX, and makes
+LLM feedback optional/on-demand.
+
+**Scope:**
+- `POST /feedback` endpoint accepts `{ sentences: [{ expected_text, score, words[] }] }`
+- `PronunciationService.generate_feedback_for_session(sentences)` reconstructs a
+  combined `DiffResult` and calls `LLMProvider.generate_feedback()` once
+- `GET /analyze` gains an optional `enable_llm` form field (overrides server default
+  per-request): `"true"` | `"false"` — empty string = use server default
+- Returns `{ suggestions: string[] }` — 1-5 tips covering the whole session
+- 503 when `ENABLE_LLM=false` server-side
+- Add `POST /feedback` to the typed `lib/api.ts` client on the frontend
+
+**API contract:**
+```
+POST /feedback
+Content-Type: application/json
+
+{
+  "sentences": [
+    {
+      "expected_text": "hey how is it going",
+      "score": 94,
+      "words": [
+        { "expected_word": "hey", "spoken_word": "hey", "status": "ok",
+          "confidence": 0.88, "phoneme_scores": [{"phoneme": "h", "score": 73}] }
+      ]
+    }
+  ]
+}
+
+→ { "suggestions": ["Focus on the 'h' sound in 'hey'…"] }
+```
+
+**High-level error/failure modes:**
+- Empty sentences list → 400
+- LLM disabled server-side → 503
+- LLM timeout → 504
+- LLM response malformed → 422
 
 ---
 

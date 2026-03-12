@@ -1,6 +1,9 @@
 """Azure Cognitive Services implementation of PronunciationAssessmentProvider."""
 
+import io
 import json
+import subprocess
+import wave
 
 import azure.cognitiveservices.speech as speechsdk
 
@@ -28,11 +31,54 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
         if not region or not region.strip():
             raise ValueError("AZURE_SPEECH_REGION must be set and non-empty")
         self._speech_config = speechsdk.SpeechConfig(subscription=key, region=region)
-        self._audio_format = speechsdk.audio.AudioStreamFormat(
-            samples_per_second=16000,
-            bits_per_sample=16,
-            channels=1,
+
+    def _audio_config_from_wav(
+        self, audio_bytes: bytes
+    ) -> tuple[speechsdk.audio.AudioConfig, speechsdk.audio.PushAudioInputStream]:
+        """Convert any audio format to 16kHz mono PCM via ffmpeg, then build a PushAudioInputStream."""
+        # Use ffmpeg to transcode to raw PCM: 16kHz, 16-bit, mono
+        proc = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                "pipe:0",  # read from stdin
+                "-ar",
+                "16000",  # resample to 16kHz
+                "-ac",
+                "1",  # mono
+                "-f",
+                "wav",  # output WAV with RIFF header
+                "pipe:1",  # write to stdout
+            ],
+            input=audio_bytes,
+            capture_output=True,
+            timeout=15,
         )
+        if proc.returncode != 0:
+            raise PronunciationError(
+                f"ffmpeg conversion failed: {proc.stderr.decode(errors='replace').strip()}"
+            )
+
+        wav_bytes = proc.stdout
+        buf = io.BytesIO(wav_bytes)
+        with wave.open(buf, "rb") as wf:
+            sample_rate = wf.getframerate()
+            bits_per_sample = wf.getsampwidth() * 8
+            channels = wf.getnchannels()
+            pcm_bytes = wf.readframes(wf.getnframes())
+
+        audio_format = speechsdk.audio.AudioStreamFormat(
+            samples_per_second=sample_rate,
+            bits_per_sample=bits_per_sample,
+            channels=channels,
+        )
+        push_stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
+        push_stream.write(pcm_bytes)
+        push_stream.close()
+        return speechsdk.audio.AudioConfig(stream=push_stream), push_stream
 
     def assess(self, audio_bytes: bytes, expected_text: str) -> PronunciationResult:
         """Assess pronunciation of audio against the expected text.
@@ -55,11 +101,11 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
         )
         pa_config.enable_prosody_assessment()
 
-        push_stream = speechsdk.audio.PushAudioInputStream(stream_format=self._audio_format)
-        push_stream.write(audio_bytes)
-        push_stream.close()
+        try:
+            audio_config, _ = self._audio_config_from_wav(audio_bytes)
+        except Exception as exc:
+            raise PronunciationError(f"Failed to parse audio: {exc}") from exc
 
-        audio_config = speechsdk.audio.AudioConfig(stream=push_stream)
         recognizer = speechsdk.SpeechRecognizer(
             speech_config=self._speech_config, audio_config=audio_config
         )
