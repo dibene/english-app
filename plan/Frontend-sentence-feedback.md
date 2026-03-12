@@ -19,6 +19,7 @@ per-phoneme breakdown, suggestions, and a re-record flow.
   - Re-record button that resets to idle state for the selected sentence
   - Explicit success state when score is 100 / no errors
 - Graceful degradation: phoneme score colouring hidden when `phoneme_scores` is absent (Deepgram fallback)
+- Audio preview before sending: after stopping the recorder the audio is held in state; the user can listen, discard and re-record, or confirm and send — using the native `<audio>` element, no extra library
 
 **Out of scope (this PR):**
 - Backend changes of any kind
@@ -140,13 +141,20 @@ Phoneme chips (per WordOut):
 
 3. Modify `frontend/app/page.tsx`
    - Add `selectedSentenceIdx` state (`number | null`, default `null`)
+   - Add `audioBlob` state (`Blob | null`, default `null`) — holds recorded audio in preview
+   - Add `audioUrl` state (`string | null`) — `URL.createObjectURL(blob)`, revoked on cleanup
    - Add `charCount` derived value from textarea value
    - Enforce 500-char limit in `onChange` handler (or show counter + disable submit)
    - Show `SentenceList` below textarea when `sentence.trim()` is non-empty
    - `canRecord` now also requires `selectedSentenceIdx !== null`
+   - **Updated state machine:** `idle → recording → preview → processing → done`
+     - `recorder.onstop`: save blob + create object URL → set status `"preview"` (do NOT call `analyze()` yet)
+     - Preview UI: `<audio controls src={audioUrl} />` + "Send" button + "Re-record" button
+     - "Send" → calls `analyze(blob, sentence)` → `"processing"` → `"done"`
+     - "Re-record" → revokes object URL, clears `audioBlob`/`audioUrl` → back to `"idle"`
    - Pass `sentences[selectedSentenceIdx]` as `expected_text` to `analyze()`
    - Replace raw JSON block with `<FeedbackPanel result={result} onReRecord={resetToIdle} />`
-   - `resetToIdle`: sets `status → "idle"`, clears `result` and `errorMsg`
+   - `resetToIdle`: sets `status → "idle"`, clears `result`, `errorMsg`, `audioBlob`, `audioUrl`
 
 ## Definition of Done
 
@@ -159,6 +167,11 @@ Phoneme chips (per WordOut):
 - [ ] Phoneme chips render in neutral grey when `phoneme_scores` is absent
 - [ ] "Spoken" phoneme label shown only when it differs from expected
 - [ ] Success state shown when score === 100 or no errors
+- [ ] After stopping, audio is held in preview state (not auto-sent)
+- [ ] Preview shows native `<audio>` player, a "Send" button, and a "Re-record" button
+- [ ] "Send" triggers the analyze call and transitions to processing
+- [ ] "Re-record" discards the blob and returns to idle
+- [ ] Object URL is revoked when no longer needed (no memory leak)
 - [ ] Re-record resets to idle for the selected sentence
 - [ ] No TypeScript errors (`next build` or `tsc --noEmit` passes)
 - [ ] App runs locally and displays correctly in browser

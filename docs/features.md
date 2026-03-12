@@ -457,6 +457,8 @@ for the backend response. Replaces the raw JSON dump added in F-006.
 - Sentence splitting (period / question / exclamation detection)
 - Sentence list with click-to-select; selected sentence highlighted
 - Feed selected sentence into the existing recording + submit flow from F-006
+- **Audio preview before sending:** after stopping the recorder the blob is held; the user
+  can listen via native `<audio>` controls, discard and re-record, or confirm and send
 - Feedback panel replacing raw JSON:
   - Score display (number + color coding: green ≥ 80, yellow 50–79, red < 50)
   - Word-level highlighting in the original sentence (color per error type)
@@ -507,6 +509,7 @@ Strip trailing digits before comparing to `phoneme_scores[i].phoneme` (e.g. "ER1
 - Backend returns error response
 - `feedback JSON` has missing or unexpected fields
 - `phoneme_scores` absent (Deepgram fallback) — phoneme score colouring hidden gracefully
+- Object URL not revoked → memory leak (must revoke on discard and on unmount)
 
 ---
 
