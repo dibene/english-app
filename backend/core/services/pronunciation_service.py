@@ -72,7 +72,7 @@ class PronunciationService:
                 "expected_phonemes": e.expected_phonemes,
                 "phoneme_scores": (
                     [{"phoneme": ps.phoneme, "score": ps.score} for ps in e.phoneme_scores]
-                    if e.phoneme_scores
+                    if e.phoneme_scores is not None
                     else None
                 ),
             }

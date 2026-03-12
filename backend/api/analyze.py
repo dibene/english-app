@@ -20,6 +20,10 @@ _ALLOWED_CONTENT_TYPES = {
     "audio/wave",
     "audio/x-wav",
     "audio/webm",
+    "audio/ogg",
+    "audio/mp4",
+    "audio/mpeg",
+    "video/webm",  # Chrome sometimes reports webm as video/webm
 }
 
 
