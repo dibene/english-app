@@ -460,16 +460,53 @@ for the backend response. Replaces the raw JSON dump added in F-006.
 - Feedback panel replacing raw JSON:
   - Score display (number + color coding: green ≥ 80, yellow 50–79, red < 50)
   - Word-level highlighting in the original sentence (color per error type)
-  - On hover/tap of a highlighted word: phoneme breakdown (hidden gracefully when `phoneme_scores` absent)
+  - Below each word: per-phoneme breakdown row (hidden gracefully when both
+    `phoneme_scores` and `expected_phonemes` are absent — Deepgram fallback)
   - Suggestions list
   - Re-record button; explicit success state when score is 100 / no errors
+
+**Phoneme data model — how to use the two fields together:**
+
+Each `WordOut` in the API response carries two parallel phoneme fields:
+
+```
+WordOut {
+  expected_phonemes: string[] | null   // e.g. ["W", "ER1", "L", "D"]  — from cmudict (ARPAbet)
+  phoneme_scores: PhonemeScore[] | null // e.g. [{phoneme:"w", score:95}, {phoneme:"er", score:42}, ...]
+                                        //   .phoneme = the phoneme Azure detected the user SPEAKING
+                                        //   .score   = accuracy 0–100
+}
+```
+
+- `expected_phonemes` — what the user **should** have said (cmudict, uppercase with stress: "ER1").
+- `phoneme_scores[i].phoneme` — what Azure detected the user **actually saying** for each slot (lowercase, no stress: "er").
+- `phoneme_scores[i].score` — accuracy score 0–100 for that slot.
+
+The two arrays are **parallel**: index 0 in `phoneme_scores` corresponds to index 0 in
+`expected_phonemes`. This allows showing expected vs. spoken side by side.
+
+**Phoneme row UI design:**
+
+Each word column (word label + phoneme chips below it) should show, for each phoneme slot:
+- The **expected phoneme** chip (from `expected_phonemes[i]`), coloured by score:
+  - green ≥ 80, yellow 50–79, red < 50 (use `phoneme_scores[i].score` to pick colour)
+- Below or on hover/tap: the **spoken phoneme** (from `phoneme_scores[i].phoneme`)
+  - Only show if it differs from the expected phoneme (case-insensitive, strip stress digits)
+  - When shown inline: smaller font, grey, below the expected chip
+  - When shown on hover/tap: tooltip or popover anchored to the chip
+- When `phoneme_scores` is absent but `expected_phonemes` is present (Deepgram fallback):
+  render expected phoneme chips in neutral grey (no score colouring, no "spoken" label)
+- When both are absent: render nothing below the word
+
+**Normalisation note:** `expected_phonemes` use ARPAbet with stress digits ("ER1", "AH0").
+Strip trailing digits before comparing to `phoneme_scores[i].phoneme` (e.g. "ER1" → "er").
 
 **High-level error/failure modes:**
 - Text exceeds 500 characters
 - No sentences detected
 - Backend returns error response
 - `feedback JSON` has missing or unexpected fields
-- `phoneme_scores` absent (Deepgram fallback) — phoneme panel hidden gracefully
+- `phoneme_scores` absent (Deepgram fallback) — phoneme score colouring hidden gracefully
 
 ---
 
