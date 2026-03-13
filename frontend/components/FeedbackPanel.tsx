@@ -10,20 +10,20 @@ function scoreColour(n: number): string {
 
 function wordBg(status: string): string {
   switch (status) {
-    case "ok":            return "bg-green-100 text-green-800";
+    case "ok": return "bg-green-100 text-green-800";
     case "mispronounced": return "bg-yellow-100 text-yellow-800";
-    case "missing":       return "bg-red-100 text-red-500 line-through opacity-60";
-    case "inserted":      return "bg-blue-100 text-blue-800";
-    default:              return "bg-gray-100 text-gray-700";
+    case "missing": return "bg-red-100 text-red-500 line-through opacity-60";
+    case "inserted": return "bg-blue-100 text-blue-800";
+    default: return "bg-gray-100 text-gray-700";
   }
 }
 
 function normalisePhoneme(p: string): string {
-  return p.replace(/\d+$/, "").toLowerCase();
+  return p.toLowerCase();
 }
 
 function phonemeDiffers(expected: string, spoken: string): boolean {
-  return normalisePhoneme(expected) !== spoken.toLowerCase();
+  return normalisePhoneme(expected) !== normalisePhoneme(spoken);
 }
 
 // ── PhonemeChip ──────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ interface PhonemeChipProps {
 }
 
 function PhonemeChip({ expected, score, spoken }: PhonemeChipProps) {
-  const label = normalisePhoneme(expected).toUpperCase();
+  const label = normalisePhoneme(expected);
   const chipColour =
     score === null
       ? "bg-gray-100 text-gray-500 border-gray-300"

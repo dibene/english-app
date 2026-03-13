@@ -15,20 +15,78 @@ _CMUDICT: dict[str, list[list[str]]] = cmudict.dict()
 # "I'll" survive and resolve correctly in CMUdict.
 _STRIP_PUNCT = str.maketrans("", "", string.punctuation.replace("'", ""))
 
+# ARPAbet → IPA mapping aligned with Azure Speech SDK en-US IPA output.
+_ARPABET_TO_IPA: dict[str, str] = {
+    "AA": "ɑ",
+    "AE": "æ",
+    "AH": "ʌ",
+    "AO": "ɔ",
+    "AW": "aʊ",
+    "AY": "aɪ",
+    "EH": "ɛ",
+    "ER": "ɝ",
+    "EY": "eɪ",
+    "IH": "ɪ",
+    "IY": "i",
+    "OW": "oʊ",
+    "OY": "ɔɪ",
+    "UH": "ʊ",
+    "UW": "u",
+    "B": "b",
+    "CH": "tʃ",
+    "D": "d",
+    "DH": "ð",
+    "F": "f",
+    "G": "ɡ",
+    "HH": "h",
+    "JH": "dʒ",
+    "K": "k",
+    "L": "l",
+    "M": "m",
+    "N": "n",
+    "NG": "ŋ",
+    "P": "p",
+    "R": "r",
+    "S": "s",
+    "SH": "ʃ",
+    "T": "t",
+    "TH": "θ",
+    "V": "v",
+    "W": "w",
+    "Y": "j",
+    "Z": "z",
+    "ZH": "ʒ",
+}
+
+
+def _arpabet_to_ipa(phoneme: str) -> str:
+    """Convert an ARPAbet phoneme (with optional stress digit) to IPA."""
+    if phoneme and phoneme[-1].isdigit():
+        stress, base = phoneme[-1], phoneme[:-1]
+    else:
+        stress, base = None, phoneme
+    # AH0 is the unstressed schwa; AH1/AH2 is the stressed "uh" sound.
+    if base == "AH" and stress == "0":
+        return "ə"
+    return _ARPABET_TO_IPA.get(base, phoneme.lower())
+
 
 def _normalize(text: str) -> list[str]:
     """Lowercase and strip punctuation (preserving apostrophes), returning a list of words."""
     text = text.lower()
+    # Normalize curly/smart apostrophes (U+2019, U+02BC) to straight apostrophe so
+    # contractions like "it's", "won't", "I'll" resolve correctly in CMUdict.
+    text = text.replace("\u2019", "'").replace("\u02bc", "'")
     text = text.translate(_STRIP_PUNCT)
     return text.split()
 
 
 def _get_phonemes(word: str) -> list[str] | None:
-    """Return ARPAbet phoneme list for word using cmudict, or None if unknown."""
+    """Return IPA phoneme list for word using cmudict, or None if unknown."""
     pronunciations = _CMUDICT.get(word.lower())
     if not pronunciations:
         return None
-    return list(pronunciations[0])
+    return [_arpabet_to_ipa(p) for p in pronunciations[0]]
 
 
 class TextComparisonEngine:

@@ -100,6 +100,7 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
             enable_miscue=True,
         )
         pa_config.enable_prosody_assessment()
+        pa_config.phoneme_alphabet = "IPA"
 
         try:
             audio_config, _ = self._audio_config_from_wav(audio_bytes)
