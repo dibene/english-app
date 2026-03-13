@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { analyze, AnalyzeResponse } from "../lib/api";
 import SentenceList, { splitSentences } from "../components/SentenceList";
 import BilingualSentenceList, { parseBilingualText } from "../components/BilingualSentenceList";
-import FeedbackPanel from "../components/FeedbackPanel";
+import SessionPanel, { SessionEntry } from "../components/SessionPanel";
 
 const MAX_CHARS = 500;
 
@@ -16,11 +16,13 @@ export default function Home() {
   const [status, setStatus] = useState<RecorderStatus>("idle");
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  const [sentenceResults, setSentenceResults] = useState<Record<number, AnalyzeResponse>>({});
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [mode, setMode] = useState<"free" | "bilingual">("free");
   const [bilingualText, setBilingualText] = useState("");
   const [selectedPairIdx, setSelectedPairIdx] = useState<number | null>(null);
+  const [llmMode, setLlmMode] = useState<"disabled" | "per-sentence" | "per-text">("per-sentence");
+  const [sessionResults, setSessionResults] = useState<SessionEntry[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -44,7 +46,6 @@ export default function Home() {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
     setAudioUrl(null);
-    setResult(null);
     setErrorMsg(null);
     setStatus("idle");
   }
@@ -53,11 +54,14 @@ export default function Home() {
     setMode(newMode);
     setSelectedIdx(null);
     setSelectedPairIdx(null);
+    setSentenceResults({});
     resetToIdle();
   }
 
-  async function startRecording() {
+  async function startRecording(idx: number) {
     resetToIdle();
+    if (mode === "free") setSelectedIdx(idx);
+    else setSelectedPairIdx(idx);
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setErrorMsg("Audio recording is not supported in this browser.");
@@ -106,25 +110,43 @@ export default function Home() {
 
   async function sendAudio() {
     if (!audioBlob || !selectedSentence) return;
+    const activeIdx = mode === "free" ? selectedIdx : selectedPairIdx;
+    if (activeIdx === null) return;
     setStatus("processing");
     try {
-      const data = await analyze(audioBlob, selectedSentence);
-      setResult(data);
-      setStatus("done");
+      const enableLlm = llmMode === "per-sentence" ? undefined : false;
+      const data = await analyze(audioBlob, selectedSentence, enableLlm);
+      setSentenceResults((prev) => ({ ...prev, [activeIdx]: data }));
+      if (llmMode === "per-text") {
+        setSessionResults((prev) => [
+          ...prev.filter((e) => e.sentence !== selectedSentence),
+          { sentence: selectedSentence, result: data },
+        ]);
+      }
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      setAudioBlob(null);
+      setAudioUrl(null);
+      setErrorMsg(null);
+      setStatus("idle");
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Unexpected error from backend.");
       setStatus("error");
     }
   }
 
+  function reRecordSentence(idx: number) {
+    setSentenceResults((prev) => {
+      const updated = { ...prev };
+      delete updated[idx];
+      return updated;
+    });
+    resetToIdle();
+  }
+
   const isRecording = status === "recording";
   const isProcessing = status === "processing";
   const isPreview = status === "preview";
-  const canRecord =
-    !isRecording && !isProcessing && !isPreview &&
-    selectedSentence !== null &&
-    (mode === "bilingual" || !overLimit);
-
+  const isAnyBusy = isRecording || isProcessing || isPreview;
   const charCount = text.length;
   const overLimit = charCount > MAX_CHARS;
 
@@ -132,7 +154,7 @@ export default function Home() {
     <main className="max-w-2xl mx-auto p-8 space-y-6">
       <h1 className="text-2xl font-bold">Read &amp; Improve</h1>
 
-      {/* Mode tabs */}
+      {/* Input mode tabs */}
       <div className="flex gap-1 rounded-lg bg-gray-100 p-1 w-fit">
         <button
           onClick={() => switchMode("free")}
@@ -148,6 +170,25 @@ export default function Home() {
         >
           ES → EN Sentences
         </button>
+      </div>
+
+      {/* LLM mode selector */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-gray-500 font-medium">LLM feedback:</span>
+        <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+          {(["disabled", "per-sentence", "per-text"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setLlmMode(m)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${llmMode === m
+                  ? "bg-white shadow text-gray-900"
+                  : "text-gray-500 hover:text-gray-700"
+                }`}
+            >
+              {m === "disabled" ? "Disabled" : m === "per-sentence" ? "Per sentence" : "Per text"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Free Text mode */}
@@ -170,6 +211,7 @@ export default function Home() {
               onChange={(e) => {
                 setText(e.target.value);
                 setSelectedIdx(null);
+                setSentenceResults({});
                 resetToIdle();
               }}
               disabled={isRecording || isProcessing}
@@ -182,14 +224,18 @@ export default function Home() {
           {/* sentence list */}
           {text.trim().length > 0 && !overLimit && (
             <div className="space-y-1">
-              <p className="text-sm text-gray-500">Select a sentence to practise:</p>
               <SentenceList
-                text={text}
+                sentences={sentences}
                 selected={selectedIdx}
-                onChange={(i) => {
-                  setSelectedIdx(i);
-                  resetToIdle();
-                }}
+                status={status}
+                audioUrl={audioUrl}
+                results={sentenceResults}
+                isAnyBusy={isAnyBusy}
+                rowDisabled={overLimit}
+                onRecord={startRecording}
+                onStop={stopRecording}
+                onSend={sendAudio}
+                onReRecord={reRecordSentence}
               />
             </div>
           )}
@@ -218,6 +264,7 @@ export default function Home() {
               onChange={(e) => {
                 setBilingualText(e.target.value);
                 setSelectedPairIdx(null);
+                setSentenceResults({});
                 resetToIdle();
               }}
               disabled={isRecording || isProcessing}
@@ -225,69 +272,20 @@ export default function Home() {
           </div>
           {pairs.length > 0 && (
             <div className="space-y-1">
-              <p className="text-sm text-gray-500">Select an English sentence to practise:</p>
               <BilingualSentenceList
                 pairs={pairs}
                 selected={selectedPairIdx}
-                onChange={(i) => {
-                  setSelectedPairIdx(i);
-                  resetToIdle();
-                }}
+                status={status}
+                audioUrl={audioUrl}
+                results={sentenceResults}
+                isAnyBusy={isAnyBusy}
+                onRecord={startRecording}
+                onStop={stopRecording}
+                onSend={sendAudio}
+                onReRecord={reRecordSentence}
               />
             </div>
           )}
-        </div>
-      )}
-
-      {/* recording controls */}
-      {!isPreview && status !== "done" && (
-        <div className="flex items-center gap-4">
-          {!isRecording ? (
-            <button
-              onClick={startRecording}
-              disabled={!canRecord}
-              className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-40"
-            >
-              {isProcessing ? "Processing…" : "Record"}
-            </button>
-          ) : (
-            <button
-              onClick={stopRecording}
-              className="px-4 py-2 bg-red-600 text-white rounded"
-            >
-              Stop
-            </button>
-          )}
-
-          <span className="text-sm text-gray-500">
-            {status === "idle" && (selectedSentence ? "Ready — press Record." : "Select a sentence first.")}
-            {status === "recording" && "Recording… press Stop when done."}
-            {status === "processing" && "Sending to backend…"}
-            {status === "error" && "Something went wrong."}
-          </span>
-        </div>
-      )}
-
-      {/* audio preview */}
-      {isPreview && audioUrl && (
-        <div className="space-y-3 rounded border border-gray-200 bg-gray-50 p-4">
-          <p className="text-sm font-medium text-gray-700">Listen before sending:</p>
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <audio controls src={audioUrl} className="w-full" />
-          <div className="flex gap-3">
-            <button
-              onClick={sendAudio}
-              className="px-4 py-2 bg-blue-600 text-white rounded text-sm"
-            >
-              Send
-            </button>
-            <button
-              onClick={resetToIdle}
-              className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-100"
-            >
-              Re-record
-            </button>
-          </div>
         </div>
       )}
 
@@ -298,9 +296,12 @@ export default function Home() {
         </div>
       )}
 
-      {/* feedback panel */}
-      {result && status === "done" && (
-        <FeedbackPanel result={result} onReRecord={resetToIdle} />
+      {/* session panel for per-text mode */}
+      {llmMode === "per-text" && (
+        <SessionPanel
+          entries={sessionResults}
+          onClear={() => setSessionResults([])}
+        />
       )}
     </main>
   );
