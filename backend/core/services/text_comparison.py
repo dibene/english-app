@@ -11,11 +11,15 @@ from core.models.transcription import PhonemeScore
 
 _CMUDICT: dict[str, list[list[str]]] = cmudict.dict()
 
+# Strip all punctuation except apostrophes so contractions like "it's", "won't",
+# "I'll" survive and resolve correctly in CMUdict.
+_STRIP_PUNCT = str.maketrans("", "", string.punctuation.replace("'", ""))
+
 
 def _normalize(text: str) -> list[str]:
-    """Lowercase and strip punctuation, returning a list of words."""
+    """Lowercase and strip punctuation (preserving apostrophes), returning a list of words."""
     text = text.lower()
-    text = text.translate(str.maketrans("", "", string.punctuation))
+    text = text.translate(_STRIP_PUNCT)
     return text.split()
 
 
