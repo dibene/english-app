@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { analyze, AnalyzeResponse } from "../lib/api";
 import SentenceList, { splitSentences } from "../components/SentenceList";
+import BilingualSentenceList, { parseBilingualText } from "../components/BilingualSentenceList";
 import FeedbackPanel from "../components/FeedbackPanel";
 
 const MAX_CHARS = 500;
@@ -17,6 +18,9 @@ export default function Home() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [mode, setMode] = useState<"free" | "bilingual">("free");
+  const [bilingualText, setBilingualText] = useState("");
+  const [selectedPairIdx, setSelectedPairIdx] = useState<number | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -29,8 +33,12 @@ export default function Home() {
   }, [audioUrl]);
 
   const sentences = splitSentences(text.trim());
-  const selectedSentence =
-    selectedIdx !== null ? (sentences[selectedIdx] ?? null) : null;
+  const freeSentence = selectedIdx !== null ? (sentences[selectedIdx] ?? null) : null;
+
+  const pairs = parseBilingualText(bilingualText);
+  const bilingualSentence = selectedPairIdx !== null ? (pairs[selectedPairIdx]?.english ?? null) : null;
+
+  const selectedSentence = mode === "free" ? freeSentence : bilingualSentence;
 
   function resetToIdle() {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -39,6 +47,13 @@ export default function Home() {
     setResult(null);
     setErrorMsg(null);
     setStatus("idle");
+  }
+
+  function switchMode(newMode: "free" | "bilingual") {
+    setMode(newMode);
+    setSelectedIdx(null);
+    setSelectedPairIdx(null);
+    resetToIdle();
   }
 
   async function startRecording() {
@@ -107,7 +122,8 @@ export default function Home() {
   const isPreview = status === "preview";
   const canRecord =
     !isRecording && !isProcessing && !isPreview &&
-    selectedSentence !== null;
+    selectedSentence !== null &&
+    (mode === "bilingual" || !overLimit);
 
   const charCount = text.length;
   const overLimit = charCount > MAX_CHARS;
@@ -116,51 +132,111 @@ export default function Home() {
     <main className="max-w-2xl mx-auto p-8 space-y-6">
       <h1 className="text-2xl font-bold">Read &amp; Improve</h1>
 
-      {/* textarea + char counter */}
-      <div className="space-y-1">
-        <label htmlFor="text-input" className="block font-medium">
-          Text to practise
-        </label>
-        <textarea
-          id="text-input"
-          className={
-            "w-full border rounded p-2 font-mono text-sm " +
-            (overLimit ? "border-red-400 focus:outline-red-400" : "border-gray-300")
-          }
-          rows={3}
-          placeholder="Type one or more sentences here…"
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setSelectedIdx(null);
-            resetToIdle();
-          }}
-          disabled={isRecording || isProcessing}
-        />
-        <p className={`text-right text-xs ${overLimit ? "text-red-500 font-medium" : "text-gray-400"}`}>
-          {charCount} / {MAX_CHARS}
-        </p>
+      {/* Mode tabs */}
+      <div className="flex gap-1 rounded-lg bg-gray-100 p-1 w-fit">
+        <button
+          onClick={() => switchMode("free")}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "free" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
+            }`}
+        >
+          Free Text
+        </button>
+        <button
+          onClick={() => switchMode("bilingual")}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "bilingual" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
+            }`}
+        >
+          ES → EN Sentences
+        </button>
       </div>
 
-      {/* sentence list */}
-      {text.trim().length > 0 && !overLimit && (
-        <div className="space-y-1">
-          <p className="text-sm text-gray-500">Select a sentence to practise:</p>
-          <SentenceList
-            text={text}
-            selected={selectedIdx}
-            onChange={(i) => {
-              setSelectedIdx(i);
-              resetToIdle();
-            }}
-          />
-        </div>
+      {/* Free Text mode */}
+      {mode === "free" && (
+        <>
+          {/* textarea + char counter */}
+          <div className="space-y-1">
+            <label htmlFor="text-input" className="block font-medium">
+              Text to practise
+            </label>
+            <textarea
+              id="text-input"
+              className={
+                "w-full border rounded p-2 font-mono text-sm text-gray-900 bg-white " +
+                (overLimit ? "border-red-400 focus:outline-red-400" : "border-gray-300")
+              }
+              rows={3}
+              placeholder="Type one or more sentences here…"
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                setSelectedIdx(null);
+                resetToIdle();
+              }}
+              disabled={isRecording || isProcessing}
+            />
+            <p className={`text-right text-xs ${overLimit ? "text-red-500 font-medium" : "text-gray-400"}`}>
+              {charCount} / {MAX_CHARS}
+            </p>
+          </div>
+
+          {/* sentence list */}
+          {text.trim().length > 0 && !overLimit && (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-500">Select a sentence to practise:</p>
+              <SentenceList
+                text={text}
+                selected={selectedIdx}
+                onChange={(i) => {
+                  setSelectedIdx(i);
+                  resetToIdle();
+                }}
+              />
+            </div>
+          )}
+
+          {overLimit && (
+            <p className="text-sm text-red-500">
+              Text exceeds {MAX_CHARS} characters. Please shorten it before recording.
+            </p>
+          )}
+        </>
       )}
 
-      {overLimit && (
-        <p className="text-sm text-red-500">
-          Text exceeds {MAX_CHARS} characters. Please shorten it before recording.
-        </p>
+      {/* Bilingual mode */}
+      {mode === "bilingual" && (
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label htmlFor="bilingual-input" className="block font-medium">
+              Paste Spanish–English sentence pairs
+            </label>
+            <textarea
+              id="bilingual-input"
+              className="w-full border rounded p-2 font-mono text-sm text-gray-900 bg-white border-gray-300"
+              rows={6}
+              placeholder={`Iré a Madrid la semana que viene. I will go to Madrid next week.\n2 Él comerá con nosotros. He'll have lunch with us.`}
+              value={bilingualText}
+              onChange={(e) => {
+                setBilingualText(e.target.value);
+                setSelectedPairIdx(null);
+                resetToIdle();
+              }}
+              disabled={isRecording || isProcessing}
+            />
+          </div>
+          {pairs.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-500">Select an English sentence to practise:</p>
+              <BilingualSentenceList
+                pairs={pairs}
+                selected={selectedPairIdx}
+                onChange={(i) => {
+                  setSelectedPairIdx(i);
+                  resetToIdle();
+                }}
+              />
+            </div>
+          )}
+        </div>
       )}
 
       {/* recording controls */}
