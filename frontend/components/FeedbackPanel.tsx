@@ -67,9 +67,24 @@ function WordCard({ word }: { word: WordOut }) {
   return (
     <div className="flex flex-col items-center gap-1">
       {/* word pill */}
-      <span className={`rounded px-2 py-0.5 text-sm font-medium ${wordBg(word.status)}`}>
-        {word.expected_word ?? word.spoken_word ?? "—"}
-      </span>
+      {(() => {
+        const label = word.expected_word ?? word.spoken_word ?? "—";
+        const clean = label.replace(/[^a-zA-Z'-]/g, "").toLowerCase();
+        return clean ? (
+          <a
+            href={`https://www.wordreference.com/enes/${clean}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`rounded px-2 py-0.5 text-sm font-medium underline decoration-dotted underline-offset-2 hover:opacity-80 ${wordBg(word.status)}`}
+          >
+            {label}
+          </a>
+        ) : (
+          <span className={`rounded px-2 py-0.5 text-sm font-medium ${wordBg(word.status)}`}>
+            {label}
+          </span>
+        );
+      })()}
 
       {/* phoneme row */}
       {hasPhonemes && (
