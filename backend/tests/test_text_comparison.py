@@ -284,11 +284,26 @@ def test_expected_phonemes_none_for_inserted_entry() -> None:
 
 def test_expected_phonemes_none_for_unknown_word() -> None:
     engine = TextComparisonEngine()
-    # "zxqwerty" is not in cmudict
-    pronunciation = _make_pronunciation([("zxqwerty", 0.99)])
-    result = engine.compare("zxqwerty", pronunciation)
+    # Contains digits → not purely alphabetic → no letter fallback possible
+    pronunciation = _make_pronunciation([("zxq123", 0.99)])
+    result = engine.compare("zxq123", pronunciation)
 
     assert result.entries[0].expected_phonemes is None
+
+
+def test_expected_phonemes_letter_by_letter_for_acronym() -> None:
+    """Words not in cmudict but purely alphabetic (acronyms) get letter-name phonemes."""
+    from core.services.text_comparison import _get_phonemes
+
+    # "apis" is not in cmudict; should be spelled out A-P-I-S
+    phonemes = _get_phonemes("apis")
+    assert phonemes is not None
+    assert "eɪ" in phonemes  # letter A
+    assert "aɪ" in phonemes  # letter I
+
+    # Single letter lookups
+    assert _get_phonemes("url") is not None  # U-R-L
+    assert _get_phonemes("sql") is not None  # S-Q-L
 
 
 # ---------------------------------------------------------------------------

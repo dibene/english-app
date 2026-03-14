@@ -59,6 +59,39 @@ _ARPABET_TO_IPA: dict[str, str] = {
 }
 
 
+# Standard English letter-name pronunciations in IPA.
+# Used as fallback when a word is not in CMUdict — typically acronyms like
+# "APIs", "URL", "HTTP", "SQL" that cmudict doesn't have entries for.
+_LETTER_PHONEMES: dict[str, list[str]] = {
+    "a": ["eɪ"],
+    "b": ["b", "i"],
+    "c": ["s", "i"],
+    "d": ["d", "i"],
+    "e": ["i"],
+    "f": ["ɛ", "f"],
+    "g": ["dʒ", "i"],
+    "h": ["eɪ", "tʃ"],
+    "i": ["aɪ"],
+    "j": ["dʒ", "eɪ"],
+    "k": ["k", "eɪ"],
+    "l": ["ɛ", "l"],
+    "m": ["ɛ", "m"],
+    "n": ["ɛ", "n"],
+    "o": ["oʊ"],
+    "p": ["p", "i"],
+    "q": ["k", "j", "u"],
+    "r": ["ɑ", "r"],
+    "s": ["ɛ", "s"],
+    "t": ["t", "i"],
+    "u": ["j", "u"],
+    "v": ["v", "i"],
+    "w": ["d", "ʌ", "b", "əl", "j", "u"],
+    "x": ["ɛ", "k", "s"],
+    "y": ["w", "aɪ"],
+    "z": ["z", "i"],
+}
+
+
 def _arpabet_to_ipa(phoneme: str) -> str:
     """Convert an ARPAbet phoneme (with optional stress digit) to IPA."""
     if phoneme and phoneme[-1].isdigit():
@@ -82,11 +115,26 @@ def _normalize(text: str) -> list[str]:
 
 
 def _get_phonemes(word: str) -> list[str] | None:
-    """Return IPA phoneme list for word using cmudict, or None if unknown."""
+    """Return IPA phoneme list for word using cmudict, or None if unknown.
+
+    If the word is not in cmudict and is purely alphabetic (e.g. an acronym
+    like 'apis', 'url', 'http'), falls back to spelling it out letter by letter
+    using standard English letter-name pronunciations.
+    """
     pronunciations = _CMUDICT.get(word.lower())
-    if not pronunciations:
-        return None
-    return [_arpabet_to_ipa(p) for p in pronunciations[0]]
+    if pronunciations:
+        return [_arpabet_to_ipa(p) for p in pronunciations[0]]
+    # Acronym fallback: spell out each letter by its English name.
+    # Covers "APIs" → "apis" → A-P-I-S, "URL", "HTTP", "SQL", etc.
+    if word.isalpha():
+        letter_phones: list[str] = []
+        for ch in word.lower():
+            phones = _LETTER_PHONEMES.get(ch)
+            if phones is None:  # pragma: no cover  — all a-z are in the table
+                return None
+            letter_phones.extend(phones)
+        return letter_phones
+    return None
 
 
 def get_phonemes_for_words(words: list[str]) -> dict[str, list[str]]:

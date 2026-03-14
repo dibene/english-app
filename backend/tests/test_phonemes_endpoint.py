@@ -17,8 +17,8 @@ def test_phonemes_known_word() -> None:
 
 
 def test_phonemes_unknown_word() -> None:
-    """Unknown word is omitted from the response (empty dict)."""
-    response = client.post("/phonemes", json={"words": ["xyzzy"]})
+    """Word with non-alphabetic characters (digits) is omitted from the response."""
+    response = client.post("/phonemes", json={"words": ["r2d2"]})
     assert response.status_code == 200
     assert response.json()["phonemes"] == {}
 
@@ -39,9 +39,20 @@ def test_phonemes_deduplication() -> None:
 
 
 def test_phonemes_mixed_known_and_unknown() -> None:
-    """Response contains only the words that exist in CMUdict."""
-    response = client.post("/phonemes", json={"words": ["hello", "xyzzy"]})
+    """Response contains only recognized words; words with digits are omitted."""
+    response = client.post("/phonemes", json={"words": ["hello", "r2d2"]})
     assert response.status_code == 200
     data = response.json()
     assert "hello" in data["phonemes"]
-    assert "xyzzy" not in data["phonemes"]
+    assert "r2d2" not in data["phonemes"]
+
+
+def test_phonemes_acronym_letter_fallback() -> None:
+    """Acronyms not in CMUdict are spelled out letter-by-letter."""
+    response = client.post("/phonemes", json={"words": ["apis", "url"]})
+    assert response.status_code == 200
+    data = response.json()
+    assert "apis" in data["phonemes"]
+    assert len(data["phonemes"]["apis"]) > 0
+    assert "url" in data["phonemes"]
+    assert len(data["phonemes"]["url"]) > 0
