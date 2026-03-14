@@ -25,6 +25,8 @@ export default function Home() {
   const [sentenceAudioUrls, setSentenceAudioUrls] = useState<Record<number, string>>({});
   const [showPhonemes, setShowPhonemes] = useState(false);
   const [previewPhonemes, setPreviewPhonemes] = useState<Record<string, string[]>>({});
+  // user edits to individual sentence rows (keyed by sentence index)
+  const [sentenceOverrides, setSentenceOverrides] = useState<Record<number, string>>({});
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -40,13 +42,15 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => { Object.values(sentenceAudioUrls).forEach((u) => URL.revokeObjectURL(u)); }, []);
 
-  // fetch phonemes whenever showPhonemes is on and sentences change
+  // fetch phonemes whenever showPhonemes is on and sentences (including inline edits) change
   useEffect(() => {
     if (!showPhonemes) {
       setPreviewPhonemes({});
       return;
     }
-    const allSentences = mode === "free" ? sentences : pairs.map((p) => p.english);
+    const baseSentences = splitSentences(text.trim());
+    const effective = baseSentences.map((s, i) => sentenceOverrides[i] ?? s);
+    const allSentences = mode === "free" ? effective : parseBilingualText(bilingualText).map((p) => p.english);
     const rawWords = allSentences.flatMap((s) =>
       s.toLowerCase().replace(/[^a-z'\s]/g, "").split(/\s+/).filter(Boolean)
     );
@@ -59,10 +63,12 @@ export default function Home() {
       .then(setPreviewPhonemes)
       .catch(() => { /* silently ignore — phonemes are enhancement only */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showPhonemes, text, bilingualText, mode]);
+  }, [showPhonemes, text, bilingualText, mode, sentenceOverrides]);
 
   const sentences = splitSentences(text.trim());
-  const freeSentence = selectedIdx !== null ? (sentences[selectedIdx] ?? null) : null;
+  // Apply any per-row user edits on top of the parsed sentences
+  const effectiveSentences = sentences.map((s, i) => sentenceOverrides[i] ?? s);
+  const freeSentence = selectedIdx !== null ? (effectiveSentences[selectedIdx] ?? null) : null;
 
   const pairs = parseBilingualText(bilingualText);
   const bilingualSentence = selectedPairIdx !== null ? (pairs[selectedPairIdx]?.english ?? null) : null;
@@ -84,6 +90,7 @@ export default function Home() {
     setSentenceResults({});
     setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
     setPreviewPhonemes({});
+    setSentenceOverrides({});
     resetToIdle();
   }
 
@@ -179,6 +186,21 @@ export default function Home() {
     resetToIdle();
   }
 
+  function editSentence(idx: number, newText: string) {
+    setSentenceOverrides((prev) => ({ ...prev, [idx]: newText }));
+    // clear only this sentence's result so other sentences are unaffected
+    setSentenceResults((prev) => { const u = { ...prev }; delete u[idx]; return u; });
+    setSentenceAudioUrls((prev) => {
+      if (prev[idx]) URL.revokeObjectURL(prev[idx]);
+      const u = { ...prev }; delete u[idx]; return u;
+    });
+    if (selectedIdx === idx) resetToIdle();
+  }
+
+  function removeSessionEntry(idx: number) {
+    setSessionResults((prev) => prev.filter((_, i) => i !== idx));
+  }
+
   const isRecording = status === "recording";
   const isProcessing = status === "processing";
   const isPreview = status === "preview";
@@ -257,6 +279,7 @@ export default function Home() {
                 setSelectedIdx(null);
                 setSentenceResults({});
                 setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
+                setSentenceOverrides({});
                 resetToIdle();
               }}
               disabled={isRecording || isProcessing}
@@ -267,7 +290,7 @@ export default function Home() {
           {text.trim().length > 0 && (
             <div className="space-y-1">
               <SentenceList
-                sentences={sentences}
+                sentences={effectiveSentences}
                 selected={selectedIdx}
                 status={status}
                 audioUrl={audioUrl}
@@ -279,6 +302,7 @@ export default function Home() {
                 onStop={stopRecording}
                 onSend={sendAudio}
                 onReRecord={reRecordSentence}
+                onEditSentence={editSentence}
               />
             </div>
           )}
@@ -341,6 +365,7 @@ export default function Home() {
         <SessionPanel
           entries={sessionResults}
           onClear={() => setSessionResults([])}
+          onRemoveEntry={removeSessionEntry}
         />
       )}
     </main>

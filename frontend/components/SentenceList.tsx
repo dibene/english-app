@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AnalyzeResponse } from "../lib/api";
 import FeedbackPanel from "./FeedbackPanel";
 
@@ -27,6 +28,7 @@ interface SentenceListProps {
   onStop: () => void;
   onSend: () => void;
   onReRecord: (i: number) => void;
+  onEditSentence?: (i: number, text: string) => void;
 }
 
 export default function SentenceList({
@@ -42,7 +44,11 @@ export default function SentenceList({
   onStop,
   onSend,
   onReRecord,
+  onEditSentence,
 }: SentenceListProps) {
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState("");
+
   if (sentences.length === 0) return null;
 
   return (
@@ -69,7 +75,39 @@ export default function SentenceList({
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <span className="flex-shrink-0 text-xs text-gray-400">{i + 1}.</span>
-                <span className="text-gray-900">{sentence}</span>
+                {editingIdx === i ? (
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        onEditSentence?.(i, editValue.trim() || sentence);
+                        setEditingIdx(null);
+                      } else if (e.key === "Escape") {
+                        setEditingIdx(null);
+                      }
+                    }}
+                    onBlur={() => {
+                      onEditSentence?.(i, editValue.trim() || sentence);
+                      setEditingIdx(null);
+                    }}
+                    className="flex-1 min-w-0 border-b border-blue-400 bg-transparent text-sm text-gray-900 outline-none"
+                  />
+                ) : (
+                  <>
+                    <span className="text-gray-900">{sentence}</span>
+                    {onEditSentence && !isAnyBusy && !isRowRecording && !isRowProcessing && (
+                      <button
+                        onClick={() => { setEditingIdx(i); setEditValue(sentence); }}
+                        title="Edit sentence"
+                        className="flex-shrink-0 text-gray-300 hover:text-gray-500 text-xs leading-none"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </>
+                )}
                 {isRowProcessing && (
                   <span className="ml-1 text-xs text-gray-400 italic">Processing…</span>
                 )}
