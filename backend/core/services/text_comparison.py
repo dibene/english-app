@@ -89,6 +89,32 @@ def _get_phonemes(word: str) -> list[str] | None:
     return [_arpabet_to_ipa(p) for p in pronunciations[0]]
 
 
+def get_phonemes_for_words(words: list[str]) -> dict[str, list[str]]:
+    """Return IPA phonemes for each word using CMUdict.
+
+    Words are normalised (lowercase, stripped of punctuation) before lookup.
+    Words not found in CMUdict are omitted from the result.
+
+    Args:
+        words: List of raw words (may be mixed-case or include punctuation).
+
+    Returns:
+        Dict mapping each recognised word to its IPA phoneme list.
+    """
+    result: dict[str, list[str]] = {}
+    for word in words:
+        normalised_tokens = _normalize(word)
+        if not normalised_tokens:
+            continue
+        token = normalised_tokens[0]
+        if token in result:
+            continue
+        phonemes = _get_phonemes(token)
+        if phonemes is not None:
+            result[token] = phonemes
+    return result
+
+
 class TextComparisonEngine:
     """Compares expected text against a PronunciationResult word by word.
 

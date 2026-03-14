@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from api.dependencies import get_pronunciation_service
 from core.exceptions import LLMFeedbackError, PronunciationError
 from core.services.pronunciation_service import PronunciationService
+from core.services.text_comparison import get_phonemes_for_words
 
 router = APIRouter()
 
@@ -68,6 +69,31 @@ class FeedbackRequest(BaseModel):
 
 class FeedbackResponse(BaseModel):
     suggestions: list[str]
+
+
+class PhonemeRequest(BaseModel):
+    words: list[str]
+
+
+class PhonemeResponse(BaseModel):
+    phonemes: dict[str, list[str]]
+
+
+@router.post("/phonemes", response_model=PhonemeResponse)
+async def phonemes(request: PhonemeRequest) -> PhonemeResponse:
+    """Return IPA phonemes for a list of words from CMUdict.
+
+    Words not found in CMUdict are omitted from the response.
+    Duplicate words are deduplicated before lookup.
+
+    Args:
+        request: PhonemeRequest with a list of words.
+
+    Returns:
+        PhonemeResponse mapping each recognised word to its IPA phoneme list.
+    """
+    result = get_phonemes_for_words(request.words)
+    return PhonemeResponse(phonemes=result)
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
