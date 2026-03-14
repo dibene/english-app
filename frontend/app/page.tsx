@@ -5,7 +5,7 @@ import { analyze, AnalyzeResponse, getPhonemes } from "../lib/api";
 import SentenceList, { splitSentences } from "../components/SentenceList";
 import BilingualSentenceList, { parseBilingualText } from "../components/BilingualSentenceList";
 import SessionPanel, { SessionEntry } from "../components/SessionPanel";
-import IPAReference from "../components/IPAReference";
+import IPAReference, { IPAReferencePanel } from "../components/IPAReference";
 
 type RecorderStatus = "idle" | "recording" | "preview" | "processing" | "error";
 
@@ -25,6 +25,7 @@ export default function Home() {
   const [sentenceAudioUrls, setSentenceAudioUrls] = useState<Record<number, string>>({});
   const [showPhonemes, setShowPhonemes] = useState(false);
   const [previewPhonemes, setPreviewPhonemes] = useState<Record<string, string[]>>({});
+  const [showIPA, setShowIPA] = useState(false);
   // user edits to individual sentence rows (keyed by sentence index)
   const [sentenceOverrides, setSentenceOverrides] = useState<Record<number, string>>({});
 
@@ -207,7 +208,7 @@ export default function Home() {
   const isAnyBusy = isRecording || isProcessing || isPreview;
 
   return (
-    <main className="max-w-2xl mx-auto p-8 space-y-6">
+    <main className={`mx-auto p-8 space-y-6 ${showIPA ? "max-w-4xl" : "max-w-2xl"}`}>
       <h1 className="text-2xl font-bold">Read &amp; Improve</h1>
 
       {/* Input mode tabs */}
@@ -257,7 +258,7 @@ export default function Home() {
           {showPhonemes ? "Hide phonemes" : "Show phonemes"}
         </button>
 
-        <IPAReference />
+        <IPAReference active={showIPA} onToggle={() => setShowIPA((v) => !v)} />
       </div>
 
       {/* Free Text mode */}
@@ -288,22 +289,25 @@ export default function Home() {
 
           {/* sentence list */}
           {text.trim().length > 0 && (
-            <div className="space-y-1">
-              <SentenceList
-                sentences={effectiveSentences}
-                selected={selectedIdx}
-                status={status}
-                audioUrl={audioUrl}
-                sentenceAudioUrls={sentenceAudioUrls}
-                results={sentenceResults}
-                isAnyBusy={isAnyBusy}
-                previewPhonemes={showPhonemes ? previewPhonemes : {}}
-                onRecord={startRecording}
-                onStop={stopRecording}
-                onSend={sendAudio}
-                onReRecord={reRecordSentence}
-                onEditSentence={editSentence}
-              />
+            <div className={showIPA ? "flex gap-4 items-start" : ""}>
+              <div className={showIPA ? "flex-1 min-w-0" : ""}>
+                <SentenceList
+                  sentences={effectiveSentences}
+                  selected={selectedIdx}
+                  status={status}
+                  audioUrl={audioUrl}
+                  sentenceAudioUrls={sentenceAudioUrls}
+                  results={sentenceResults}
+                  isAnyBusy={isAnyBusy}
+                  previewPhonemes={showPhonemes ? previewPhonemes : {}}
+                  onRecord={startRecording}
+                  onStop={stopRecording}
+                  onSend={sendAudio}
+                  onReRecord={reRecordSentence}
+                  onEditSentence={editSentence}
+                />
+              </div>
+              {showIPA && <IPAReferencePanel />}
             </div>
           )}
         </>
@@ -333,21 +337,24 @@ export default function Home() {
             />
           </div>
           {pairs.length > 0 && (
-            <div className="space-y-1">
-              <BilingualSentenceList
-                pairs={pairs}
-                selected={selectedPairIdx}
-                status={status}
-                audioUrl={audioUrl}
-                sentenceAudioUrls={sentenceAudioUrls}
-                results={sentenceResults}
-                isAnyBusy={isAnyBusy}
-                previewPhonemes={showPhonemes ? previewPhonemes : {}}
-                onRecord={startRecording}
-                onStop={stopRecording}
-                onSend={sendAudio}
-                onReRecord={reRecordSentence}
-              />
+            <div className={showIPA ? "flex gap-4 items-start" : ""}>
+              <div className={showIPA ? "flex-1 min-w-0" : ""}>
+                <BilingualSentenceList
+                  pairs={pairs}
+                  selected={selectedPairIdx}
+                  status={status}
+                  audioUrl={audioUrl}
+                  sentenceAudioUrls={sentenceAudioUrls}
+                  results={sentenceResults}
+                  isAnyBusy={isAnyBusy}
+                  previewPhonemes={showPhonemes ? previewPhonemes : {}}
+                  onRecord={startRecording}
+                  onStop={stopRecording}
+                  onSend={sendAudio}
+                  onReRecord={reRecordSentence}
+                />
+              </div>
+              {showIPA && <IPAReferencePanel />}
             </div>
           )}
         </div>

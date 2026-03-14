@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 interface PhonemeEntry {
   ipa: string;
   arpabet: string;
@@ -80,43 +78,34 @@ function PhonemeTable({ entries }: { entries: PhonemeEntry[] }) {
   );
 }
 
-export default function IPAReference() {
-  const [open, setOpen] = useState(false);
-
+export function IPAReferencePanel() {
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="px-3 py-1 rounded-md text-xs font-medium border bg-white text-gray-600 border-gray-300 hover:bg-gray-50 transition-colors"
-        aria-expanded={open}
-      >
-        IPA guide 📖
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full mt-2 z-50 w-[520px] max-h-[70vh] overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-800">IPA Phoneme Reference (English)</h2>
-            <button
-              onClick={() => setOpen(false)}
-              className="text-gray-400 hover:text-gray-600 text-lg leading-none"
-              aria-label="Close IPA guide"
-            >
-              ×
-            </button>
-          </div>
-
-          <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Vowels</h3>
-            <PhonemeTable entries={VOWELS} />
-          </section>
-
-          <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Consonants</h3>
-            <PhonemeTable entries={CONSONANTS} />
-          </section>
-        </div>
-      )}
+    <div className="w-64 flex-shrink-0 overflow-y-auto max-h-[70vh] sticky top-4 border border-gray-200 rounded-lg bg-white p-3 space-y-3">
+      <h2 className="text-sm font-semibold text-gray-800">IPA Phoneme Reference</h2>
+      <section>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Vowels</h3>
+        <PhonemeTable entries={VOWELS} />
+      </section>
+      <section>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Consonants</h3>
+        <PhonemeTable entries={CONSONANTS} />
+      </section>
     </div>
+  );
+}
+
+export default function IPAReference({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`px-3 py-1 rounded-md text-xs font-medium border transition-colors ${
+        active
+          ? "bg-indigo-600 text-white border-indigo-600"
+          : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+      }`}
+      aria-expanded={active}
+    >
+      IPA guide �
+    </button>
   );
 }
