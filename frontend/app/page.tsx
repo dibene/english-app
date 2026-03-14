@@ -31,13 +31,14 @@ export default function Home() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  // Always-current ref to audioUrl — used only for unmount cleanup so we never
+  // accidentally revoke a URL that was just saved to sentenceAudioUrls.
+  const audioUrlRef = useRef<string | null>(null);
+  useEffect(() => { audioUrlRef.current = audioUrl; }, [audioUrl]);
 
-  // revoke object URL on unmount
-  useEffect(() => {
-    return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-    };
-  }, [audioUrl]);
+  // Revoke the preview URL only when the page actually unmounts, not on every
+  // state change. resetToIdle() already revokes before any new recording starts.
+  useEffect(() => () => { if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current); }, []);
 
   // revoke stored sentence audio URLs on unmount
   // eslint-disable-next-line react-hooks/exhaustive-deps
