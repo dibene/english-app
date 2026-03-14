@@ -452,11 +452,30 @@ technical piece is wiring the browser audio recording library (`RecordRTC` or na
 Upgrade the minimal flow with sentence splitting on input and a styled feedback panel
 for the backend response. Replaces the raw JSON dump added in F-006.
 
-**Scope:**
+**Scope (implemented):**
 - Textarea with 500 char limit and counter
 - Sentence splitting (period / question / exclamation detection)
-- Sentence list with click-to-select; selected sentence highlighted
-- Feed selected sentence into the existing recording + submit flow from F-006
+- **Input mode tabs:** Free Text | ES → EN Sentences
+  - Free Text: multi-sentence textarea, click-to-select (original flow)
+  - Bilingual: paste `Spanish. English sentence.` pairs (one per line, optional line number prefix);
+    renders a two-column list (Spanish italic / English bold) with per-row record button
+- **Per-sentence record button (🎤) inline** — no need to scroll; each row has its own
+  Record / ⏹ Stop button; audio preview (player + Send / Re-record) appears inside the same row
+- **Persistent per-sentence results** — feedback panel stays visible below each sentence
+  even while recording other sentences; only cleared by explicit "Re-record" or editing the text
+- **LLM feedback mode selector** (segmented control):
+  - *Disabled* — passes `enable_llm: false` to backend; fast, scores only
+  - *Per sentence* — existing behavior; LLM suggestions returned per `/analyze` call
+  - *Per text* — LLM skipped on each `/analyze`; results accumulated in a **Session Panel**
+    at the bottom; user can View JSON, Copy JSON (for external LLM), or click
+    "Analyze with LLM" to POST all results to `POST /feedback` and display holistic suggestions
+- **Session Panel** (per-text mode): score list, JSON viewer, clipboard copy, batch LLM call
+- **Bug fix:** `_normalize()` in `text_comparison.py` now preserves apostrophes so contractions
+  like `"I'll"`, `"doesn't"`, `"I'm"`, `"she'll"` resolve correctly in CMUdict instead of
+  mapping to wrong words (`"ill"`, missing, `"im"`, `"shell"`)
+- Textarea `text-gray-900 bg-white` explicit classes — readable in all system themes
+- **Audio preview before sending:** after stopping, blob is held; user can listen, discard and
+  re-record, or confirm and send
 - Feedback panel replacing raw JSON:
   - Score display (number + color coding: green ≥ 80, yellow 50–79, red < 50)
   - Word-level highlighting in the original sentence (color per error type)
@@ -507,6 +526,7 @@ Strip trailing digits before comparing to `phoneme_scores[i].phoneme` (e.g. "ER1
 - Backend returns error response
 - `feedback JSON` has missing or unexpected fields
 - `phoneme_scores` absent (Deepgram fallback) — phoneme score colouring hidden gracefully
+- Object URL not revoked → memory leak (must revoke on discard and on unmount)
 
 ---
 
@@ -543,3 +563,4 @@ frontend (npm install, env vars, run dev). .env.example files for both.
 | D-005 | Mobile native app              | Out of MVP scope                             |
 | D-006 | Streaming feedback             | Out of MVP scope                             |
 | D-007 | Phoneme-level display          | Phoneme data flows through pipeline (Azure); display promoted to F-007 scope |
+| D-008 | Phoneme preview before recording | Show expected ARPAbet phonemes below each sentence *before* the user records, so they know how to pronounce it. Toggle on/off via a "Show phonemes" mode switch. When enabled, on load/text-change the frontend sends `POST /phonemes` with the list of words from all sentences; the backend looks up CMUdict and returns `{ word → ["AY1","L"] }` for each; the frontend renders them as grey chips under each sentence row. Backend endpoint is trivial — CMUdict is already loaded in memory and `_get_phonemes()` already exists in `text_comparison.py`. Estimated backend work: ~30 min (new `/phonemes` route + `PhonemeRequest/Response` models). Frontend: pass results into `SentenceList` / `BilingualSentenceList` as a `previewPhonemes` prop and render neutral chips above the record button. |

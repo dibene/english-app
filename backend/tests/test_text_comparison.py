@@ -244,8 +244,8 @@ def test_expected_phonemes_populated_for_ok_word() -> None:
     assert isinstance(result.entries[0].expected_phonemes, list)
     assert len(result.entries[0].expected_phonemes) > 0
     assert result.entries[1].expected_phonemes is not None
-    # "world" ARPAbet: W ER1 L D
-    assert "W" in result.entries[1].expected_phonemes
+    # "world" IPA: w ɝ l d
+    assert "w" in result.entries[1].expected_phonemes
 
 
 def test_expected_phonemes_populated_for_mispronounced() -> None:
@@ -256,7 +256,7 @@ def test_expected_phonemes_populated_for_mispronounced() -> None:
     mispronounced = [e for e in result.entries if e.status == "mispronounced"]
     assert len(mispronounced) == 1
     assert mispronounced[0].expected_phonemes is not None
-    assert "W" in mispronounced[0].expected_phonemes
+    assert "w" in mispronounced[0].expected_phonemes
 
 
 def test_expected_phonemes_populated_for_missing_word() -> None:
@@ -267,7 +267,7 @@ def test_expected_phonemes_populated_for_missing_word() -> None:
     missing = [e for e in result.entries if e.status == "missing"]
     assert len(missing) == 1
     assert missing[0].expected_phonemes is not None
-    assert "W" in missing[0].expected_phonemes
+    assert "w" in missing[0].expected_phonemes
 
 
 def test_expected_phonemes_none_for_inserted_entry() -> None:

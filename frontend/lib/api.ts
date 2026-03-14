@@ -20,13 +20,47 @@ export interface AnalyzeResponse {
   suggestions: string[];
 }
 
+export interface FeedbackSentenceIn {
+  expected_text: string;
+  score: number;
+  words: WordOut[];
+}
+
+export async function feedbackBatch(
+  sentences: FeedbackSentenceIn[],
+): Promise<string[]> {
+  const res = await fetch(`${API_URL}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sentences }),
+  });
+
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
+
+  const data = await res.json();
+  return data.suggestions as string[];
+}
+
 export async function analyze(
   audio: Blob,
   sentence: string,
+  enableLlm?: boolean,
 ): Promise<AnalyzeResponse> {
   const form = new FormData();
   form.append("audio_file", audio, "recording.webm");
   form.append("expected_text", sentence);
+  if (enableLlm !== undefined) {
+    form.append("enable_llm", enableLlm ? "true" : "false");
+  }
 
   const res = await fetch(`${API_URL}/analyze`, {
     method: "POST",
