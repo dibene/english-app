@@ -132,13 +132,33 @@ export default function FeedbackPanel({ result, onReRecord }: FeedbackPanelProps
         )}
       </div>
 
-      {/* word row */}
+      {/* word row — only expected-sentence words (ok / mispronounced / missing) */}
       {words.length > 0 && (
-        <div className="flex flex-wrap gap-3">
-          {words.map((w, i) => (
-            <WordCard key={i} word={w} />
-          ))}
-        </div>
+        <>
+          <div className="flex flex-wrap gap-3">
+            {words
+              .filter((w) => w.status !== "inserted")
+              .map((w, i) => (
+                <WordCard key={i} word={w} />
+              ))}
+          </div>
+          {/* extra/inserted words shown separately so they don't disrupt the sentence flow */}
+          {words.some((w) => w.status === "inserted") && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+              <span className="font-medium">Extra words detected:</span>
+              {words
+                .filter((w) => w.status === "inserted")
+                .map((w, i) => (
+                  <span
+                    key={i}
+                    className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-500 border border-blue-200"
+                  >
+                    {w.spoken_word ?? "—"}
+                  </span>
+                ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* suggestions */}
