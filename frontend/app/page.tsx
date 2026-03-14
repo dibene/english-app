@@ -63,7 +63,7 @@ export default function Home() {
     getPhonemes(unique)
       .then(setPreviewPhonemes)
       .catch(() => { /* silently ignore — phonemes are enhancement only */ });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPhonemes, text, bilingualText, mode, sentenceOverrides]);
 
   const sentences = splitSentences(text.trim());
@@ -208,7 +208,8 @@ export default function Home() {
   const isAnyBusy = isRecording || isProcessing || isPreview;
 
   return (
-    <main className={`mx-auto p-8 space-y-6 ${showIPA ? "max-w-4xl" : "max-w-2xl"}`}>
+    <div className={showIPA ? "flex justify-center gap-6 px-4" : ""}>
+    <main className="max-w-2xl w-full mx-auto p-8 space-y-6">
       <h1 className="text-2xl font-bold">Read &amp; Improve</h1>
 
       {/* Input mode tabs */}
@@ -289,25 +290,22 @@ export default function Home() {
 
           {/* sentence list */}
           {text.trim().length > 0 && (
-            <div className={showIPA ? "flex gap-4 items-start" : ""}>
-              <div className={showIPA ? "flex-1 min-w-0" : ""}>
-                <SentenceList
-                  sentences={effectiveSentences}
-                  selected={selectedIdx}
-                  status={status}
-                  audioUrl={audioUrl}
-                  sentenceAudioUrls={sentenceAudioUrls}
-                  results={sentenceResults}
-                  isAnyBusy={isAnyBusy}
-                  previewPhonemes={showPhonemes ? previewPhonemes : {}}
-                  onRecord={startRecording}
-                  onStop={stopRecording}
-                  onSend={sendAudio}
-                  onReRecord={reRecordSentence}
-                  onEditSentence={editSentence}
-                />
-              </div>
-              {showIPA && <IPAReferencePanel />}
+            <div className="space-y-1">
+              <SentenceList
+                sentences={effectiveSentences}
+                selected={selectedIdx}
+                status={status}
+                audioUrl={audioUrl}
+                sentenceAudioUrls={sentenceAudioUrls}
+                results={sentenceResults}
+                isAnyBusy={isAnyBusy}
+                previewPhonemes={showPhonemes ? previewPhonemes : {}}
+                onRecord={startRecording}
+                onStop={stopRecording}
+                onSend={sendAudio}
+                onReRecord={reRecordSentence}
+                onEditSentence={editSentence}
+              />
             </div>
           )}
         </>
@@ -337,24 +335,21 @@ export default function Home() {
             />
           </div>
           {pairs.length > 0 && (
-            <div className={showIPA ? "flex gap-4 items-start" : ""}>
-              <div className={showIPA ? "flex-1 min-w-0" : ""}>
-                <BilingualSentenceList
-                  pairs={pairs}
-                  selected={selectedPairIdx}
-                  status={status}
-                  audioUrl={audioUrl}
-                  sentenceAudioUrls={sentenceAudioUrls}
-                  results={sentenceResults}
-                  isAnyBusy={isAnyBusy}
-                  previewPhonemes={showPhonemes ? previewPhonemes : {}}
-                  onRecord={startRecording}
-                  onStop={stopRecording}
-                  onSend={sendAudio}
-                  onReRecord={reRecordSentence}
-                />
-              </div>
-              {showIPA && <IPAReferencePanel />}
+            <div className="space-y-1">
+              <BilingualSentenceList
+                pairs={pairs}
+                selected={selectedPairIdx}
+                status={status}
+                audioUrl={audioUrl}
+                sentenceAudioUrls={sentenceAudioUrls}
+                results={sentenceResults}
+                isAnyBusy={isAnyBusy}
+                previewPhonemes={showPhonemes ? previewPhonemes : {}}
+                onRecord={startRecording}
+                onStop={stopRecording}
+                onSend={sendAudio}
+                onReRecord={reRecordSentence}
+              />
             </div>
           )}
         </div>
@@ -376,5 +371,7 @@ export default function Home() {
         />
       )}
     </main>
+    {showIPA && <IPAReferencePanel />}
+    </div>
   );
 }
