@@ -65,6 +65,7 @@ class FeedbackSentenceIn(BaseModel):
 
 class FeedbackRequest(BaseModel):
     sentences: list[FeedbackSentenceIn]
+    max_suggestions: int | None = None  # overrides server-side scaling when set
 
 
 class FeedbackResponse(BaseModel):
@@ -203,7 +204,11 @@ async def feedback(
 
     try:
         suggestions: list[str] = await asyncio.wait_for(
-            asyncio.to_thread(service.generate_feedback_for_session, request.sentences),
+            asyncio.to_thread(
+                service.generate_feedback_for_session,
+                request.sentences,
+                request.max_suggestions,
+            ),
             timeout=_ANALYZE_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:

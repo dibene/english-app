@@ -49,7 +49,9 @@ export default function SessionPanel({ entries, onClear, onRemoveEntry }: Sessio
         setAnalyzeError(null);
         setLlmSuggestions(null);
         try {
-            const suggestions = await feedbackBatch(feedbackData);
+            const n = entries.length;
+            const maxSuggestions = n >= 16 ? 7 : n >= 6 ? 5 : n >= 2 ? 4 : 3;
+            const suggestions = await feedbackBatch(feedbackData, maxSuggestions);
             setLlmSuggestions(suggestions);
         } catch (err) {
             setAnalyzeError(err instanceof Error ? err.message : "LLM request failed.");

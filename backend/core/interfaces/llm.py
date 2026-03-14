@@ -19,7 +19,12 @@ class LLMProvider(ABC):
     """
 
     @abstractmethod
-    def generate_feedback(self, expected_text: str, diff_result: DiffResult) -> dict[str, Any]:
+    def generate_feedback(
+        self,
+        expected_text: str,
+        diff_result: DiffResult,
+        n_suggestions_range: tuple[int, int] = (1, 3),
+    ) -> dict[str, Any]:
         """Generate pronunciation improvement suggestions via LLM.
 
         The LLM is responsible only for suggestions. Score and per-word phoneme
@@ -27,12 +32,15 @@ class LLMProvider(ABC):
         assembled by PronunciationService.
 
         Args:
-            expected_text: The sentence the user was supposed to pronounce.
+            expected_text: The sentence(s) the user was supposed to pronounce.
             diff_result: Word-level comparison result from TextComparisonEngine.
+                For session feedback this is a pre-filtered, aggregated DiffResult.
+            n_suggestions_range: (min, max) number of suggestions to request.
+                Scaled by the caller based on session size.
 
         Returns:
             dict with key:
-                suggestions (list[str]): 1-3 overall improvement tips.
+                suggestions (list[str]): actionable improvement tips.
 
         Raises:
             LLMFeedbackError: If the API call fails, the response is not valid
