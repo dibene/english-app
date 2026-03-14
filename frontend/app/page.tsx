@@ -6,8 +6,6 @@ import SentenceList, { splitSentences } from "../components/SentenceList";
 import BilingualSentenceList, { parseBilingualText } from "../components/BilingualSentenceList";
 import SessionPanel, { SessionEntry } from "../components/SessionPanel";
 
-const MAX_CHARS = 500;
-
 type RecorderStatus = "idle" | "recording" | "preview" | "processing" | "error";
 
 export default function Home() {
@@ -160,8 +158,6 @@ export default function Home() {
   const isProcessing = status === "processing";
   const isPreview = status === "preview";
   const isAnyBusy = isRecording || isProcessing || isPreview;
-  const charCount = text.length;
-  const overLimit = charCount > MAX_CHARS;
 
   return (
     <main className="max-w-2xl mx-auto p-8 space-y-6">
@@ -194,8 +190,8 @@ export default function Home() {
               key={m}
               onClick={() => setLlmMode(m)}
               className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${llmMode === m
-                  ? "bg-white shadow text-gray-900"
-                  : "text-gray-500 hover:text-gray-700"
+                ? "bg-white shadow text-gray-900"
+                : "text-gray-500 hover:text-gray-700"
                 }`}
             >
               {m === "disabled" ? "Disabled" : m === "per-sentence" ? "Per sentence" : "Per text"}
@@ -214,10 +210,7 @@ export default function Home() {
             </label>
             <textarea
               id="text-input"
-              className={
-                "w-full border rounded p-2 font-mono text-sm text-gray-900 bg-white " +
-                (overLimit ? "border-red-400 focus:outline-red-400" : "border-gray-300")
-              }
+              className="w-full border rounded p-2 font-mono text-sm text-gray-900 bg-white border-gray-300"
               rows={3}
               placeholder="Type one or more sentences here…"
               value={text}
@@ -230,13 +223,10 @@ export default function Home() {
               }}
               disabled={isRecording || isProcessing}
             />
-            <p className={`text-right text-xs ${overLimit ? "text-red-500 font-medium" : "text-gray-400"}`}>
-              {charCount} / {MAX_CHARS}
-            </p>
           </div>
 
           {/* sentence list */}
-          {text.trim().length > 0 && !overLimit && (
+          {text.trim().length > 0 && (
             <div className="space-y-1">
               <SentenceList
                 sentences={sentences}
@@ -246,19 +236,12 @@ export default function Home() {
                 sentenceAudioUrls={sentenceAudioUrls}
                 results={sentenceResults}
                 isAnyBusy={isAnyBusy}
-                rowDisabled={overLimit}
                 onRecord={startRecording}
                 onStop={stopRecording}
                 onSend={sendAudio}
                 onReRecord={reRecordSentence}
               />
             </div>
-          )}
-
-          {overLimit && (
-            <p className="text-sm text-red-500">
-              Text exceeds {MAX_CHARS} characters. Please shorten it before recording.
-            </p>
           )}
         </>
       )}

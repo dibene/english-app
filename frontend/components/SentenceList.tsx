@@ -10,6 +10,8 @@ export function splitSentences(text: string): string[] {
     .filter(Boolean);
 }
 
+const MAX_SENTENCE_CHARS = 200;
+
 type RecStatus = "idle" | "recording" | "preview" | "processing" | "done" | "error";
 
 interface SentenceListProps {
@@ -20,7 +22,6 @@ interface SentenceListProps {
   sentenceAudioUrls: Record<number, string>;
   results: Record<number, AnalyzeResponse>;
   isAnyBusy: boolean;
-  rowDisabled?: boolean;
   onRecord: (i: number) => void;
   onStop: () => void;
   onSend: () => void;
@@ -35,7 +36,6 @@ export default function SentenceList({
   sentenceAudioUrls,
   results,
   isAnyBusy,
-  rowDisabled = false,
   onRecord,
   onStop,
   onSend,
@@ -51,6 +51,7 @@ export default function SentenceList({
         const isRowProcessing = isActive && status === "processing";
         const isRowPreview = isActive && status === "preview";
         const hasResult = i in results;
+        const tooLong = sentence.length > MAX_SENTENCE_CHARS;
 
         return (
           <li
@@ -82,8 +83,8 @@ export default function SentenceList({
                 ) : (
                   <button
                     onClick={() => onRecord(i)}
-                    disabled={isAnyBusy || rowDisabled || isRowProcessing}
-                    title="Record"
+                    disabled={isAnyBusy || isRowProcessing || tooLong}
+                    title={tooLong ? `Sentence exceeds ${MAX_SENTENCE_CHARS} characters` : "Record"}
                     className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-40"
                   >
                     🎤
@@ -91,6 +92,12 @@ export default function SentenceList({
                 )}
               </div>
             </div>
+
+            {tooLong && (
+              <p className="mt-1 text-xs text-red-500">
+                Sentence too long ({sentence.length}/{MAX_SENTENCE_CHARS} chars) — shorten it to record.
+              </p>
+            )}
 
             {/* inline audio preview */}
             {isRowPreview && audioUrl && (

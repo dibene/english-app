@@ -22,6 +22,8 @@ export function parseBilingualText(text: string): SentencePair[] {
 
 type RecStatus = "idle" | "recording" | "preview" | "processing" | "done" | "error";
 
+const MAX_SENTENCE_CHARS = 200;
+
 interface BilingualSentenceListProps {
     pairs: SentencePair[];
     selected: number | null;
@@ -59,6 +61,7 @@ export default function BilingualSentenceList({
                 const isRowProcessing = isActive && status === "processing";
                 const isRowPreview = isActive && status === "preview";
                 const hasResult = i in results;
+                const tooLong = pair.english.length > MAX_SENTENCE_CHARS;
 
                 return (
                     <li
@@ -87,8 +90,8 @@ export default function BilingualSentenceList({
                                 ) : (
                                     <button
                                         onClick={() => onRecord(i)}
-                                        disabled={isAnyBusy || isRowProcessing}
-                                        title="Record"
+                                        disabled={isAnyBusy || isRowProcessing || tooLong}
+                                        title={tooLong ? `Sentence exceeds ${MAX_SENTENCE_CHARS} characters` : "Record"}
                                         className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-40"
                                     >
                                         🎤
@@ -96,6 +99,12 @@ export default function BilingualSentenceList({
                                 )}
                             </div>
                         </div>
+
+                        {tooLong && (
+                            <p className="mt-1 text-xs text-red-500">
+                                Sentence too long ({pair.english.length}/{MAX_SENTENCE_CHARS} chars) — shorten it to record.
+                            </p>
+                        )}
 
                         {isRowProcessing && (
                             <p className="mt-1 text-xs text-gray-400 italic">Processing…</p>
