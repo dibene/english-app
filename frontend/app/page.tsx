@@ -8,7 +8,7 @@ import SessionPanel, { SessionEntry } from "../components/SessionPanel";
 
 const MAX_CHARS = 500;
 
-type RecorderStatus = "idle" | "recording" | "preview" | "processing" | "done" | "error";
+type RecorderStatus = "idle" | "recording" | "preview" | "processing" | "error";
 
 export default function Home() {
   const [text, setText] = useState("");
@@ -23,6 +23,7 @@ export default function Home() {
   const [selectedPairIdx, setSelectedPairIdx] = useState<number | null>(null);
   const [llmMode, setLlmMode] = useState<"disabled" | "per-sentence" | "per-text">("per-sentence");
   const [sessionResults, setSessionResults] = useState<SessionEntry[]>([]);
+  const [sentenceAudioUrls, setSentenceAudioUrls] = useState<Record<number, string>>({});
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -33,6 +34,10 @@ export default function Home() {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
   }, [audioUrl]);
+
+  // revoke stored sentence audio URLs on unmount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => { Object.values(sentenceAudioUrls).forEach((u) => URL.revokeObjectURL(u)); }, []);
 
   const sentences = splitSentences(text.trim());
   const freeSentence = selectedIdx !== null ? (sentences[selectedIdx] ?? null) : null;
@@ -55,6 +60,7 @@ export default function Home() {
     setSelectedIdx(null);
     setSelectedPairIdx(null);
     setSentenceResults({});
+    setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
     resetToIdle();
   }
 
@@ -123,7 +129,8 @@ export default function Home() {
           { sentence: selectedSentence, result: data },
         ]);
       }
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      // persist audio for this sentence instead of revoking it
+      if (audioUrl) setSentenceAudioUrls((prev) => ({ ...prev, [activeIdx]: audioUrl }));
       setAudioBlob(null);
       setAudioUrl(null);
       setErrorMsg(null);
@@ -136,6 +143,12 @@ export default function Home() {
 
   function reRecordSentence(idx: number) {
     setSentenceResults((prev) => {
+      const updated = { ...prev };
+      delete updated[idx];
+      return updated;
+    });
+    setSentenceAudioUrls((prev) => {
+      if (prev[idx]) URL.revokeObjectURL(prev[idx]);
       const updated = { ...prev };
       delete updated[idx];
       return updated;
@@ -212,6 +225,7 @@ export default function Home() {
                 setText(e.target.value);
                 setSelectedIdx(null);
                 setSentenceResults({});
+                setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
                 resetToIdle();
               }}
               disabled={isRecording || isProcessing}
@@ -229,6 +243,7 @@ export default function Home() {
                 selected={selectedIdx}
                 status={status}
                 audioUrl={audioUrl}
+                sentenceAudioUrls={sentenceAudioUrls}
                 results={sentenceResults}
                 isAnyBusy={isAnyBusy}
                 rowDisabled={overLimit}
@@ -265,6 +280,7 @@ export default function Home() {
                 setBilingualText(e.target.value);
                 setSelectedPairIdx(null);
                 setSentenceResults({});
+                setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
                 resetToIdle();
               }}
               disabled={isRecording || isProcessing}
@@ -277,6 +293,7 @@ export default function Home() {
                 selected={selectedPairIdx}
                 status={status}
                 audioUrl={audioUrl}
+                sentenceAudioUrls={sentenceAudioUrls}
                 results={sentenceResults}
                 isAnyBusy={isAnyBusy}
                 onRecord={startRecording}

@@ -17,6 +17,7 @@ interface SentenceListProps {
   selected: number | null;
   status: RecStatus;
   audioUrl: string | null;
+  sentenceAudioUrls: Record<number, string>;
   results: Record<number, AnalyzeResponse>;
   isAnyBusy: boolean;
   rowDisabled?: boolean;
@@ -31,6 +32,7 @@ export default function SentenceList({
   selected,
   status,
   audioUrl,
+  sentenceAudioUrls,
   results,
   isAnyBusy,
   rowDisabled = false,
@@ -114,7 +116,11 @@ export default function SentenceList({
 
             {/* inline result */}
             {hasResult && !isRowPreview && !isRowProcessing && (
-              <div className="mt-2 pt-2 border-t border-gray-200">
+              <div className="mt-2 pt-2 border-t border-gray-200 space-y-2">
+                {sentenceAudioUrls[i] && (
+                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                  <audio controls src={sentenceAudioUrls[i]} className="w-full" />
+                )}
                 <FeedbackPanel result={results[i]} onReRecord={() => onReRecord(i)} />
               </div>
             )}
