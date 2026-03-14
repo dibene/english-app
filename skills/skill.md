@@ -12,6 +12,12 @@ Any agent (GitHub Copilot, Claude, Codex, etc.) should consult these before perf
 
 ---
 
+## Investigate / Debug / Research
+
+| Skill | Description |
+|-------|-------------|
+| [investigate](investigate/investigate.md) | Bug reports, questions, debugging — research first, write plan, wait for approval before any code change |
+
 ## Features
 
 | Skill | Description |
