@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { analyze, AnalyzeResponse } from "../lib/api";
+import { analyze, AnalyzeResponse, getPhonemes } from "../lib/api";
 import SentenceList, { splitSentences } from "../components/SentenceList";
 import BilingualSentenceList, { parseBilingualText } from "../components/BilingualSentenceList";
 import SessionPanel, { SessionEntry } from "../components/SessionPanel";
+import IPAReference from "../components/IPAReference";
 
 type RecorderStatus = "idle" | "recording" | "preview" | "processing" | "error";
 
@@ -22,6 +23,8 @@ export default function Home() {
   const [llmMode, setLlmMode] = useState<"disabled" | "per-sentence" | "per-text">("per-sentence");
   const [sessionResults, setSessionResults] = useState<SessionEntry[]>([]);
   const [sentenceAudioUrls, setSentenceAudioUrls] = useState<Record<number, string>>({});
+  const [showPhonemes, setShowPhonemes] = useState(false);
+  const [previewPhonemes, setPreviewPhonemes] = useState<Record<string, string[]>>({});
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -36,6 +39,27 @@ export default function Home() {
   // revoke stored sentence audio URLs on unmount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => { Object.values(sentenceAudioUrls).forEach((u) => URL.revokeObjectURL(u)); }, []);
+
+  // fetch phonemes whenever showPhonemes is on and sentences change
+  useEffect(() => {
+    if (!showPhonemes) {
+      setPreviewPhonemes({});
+      return;
+    }
+    const allSentences = mode === "free" ? sentences : pairs.map((p) => p.english);
+    const rawWords = allSentences.flatMap((s) =>
+      s.toLowerCase().replace(/[^a-z'\s]/g, "").split(/\s+/).filter(Boolean)
+    );
+    const unique = Array.from(new Set(rawWords));
+    if (unique.length === 0) {
+      setPreviewPhonemes({});
+      return;
+    }
+    getPhonemes(unique)
+      .then(setPreviewPhonemes)
+      .catch(() => { /* silently ignore — phonemes are enhancement only */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPhonemes, text, bilingualText, mode]);
 
   const sentences = splitSentences(text.trim());
   const freeSentence = selectedIdx !== null ? (sentences[selectedIdx] ?? null) : null;
@@ -59,6 +83,7 @@ export default function Home() {
     setSelectedPairIdx(null);
     setSentenceResults({});
     setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
+    setPreviewPhonemes({});
     resetToIdle();
   }
 
@@ -182,7 +207,7 @@ export default function Home() {
       </div>
 
       {/* LLM mode selector */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm text-gray-500 font-medium">LLM feedback:</span>
         <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
           {(["disabled", "per-sentence", "per-text"] as const).map((m) => (
@@ -198,6 +223,19 @@ export default function Home() {
             </button>
           ))}
         </div>
+
+        {/* Phoneme preview toggle */}
+        <button
+          onClick={() => setShowPhonemes((v) => !v)}
+          className={`px-3 py-1 rounded-md text-xs font-medium border transition-colors ${showPhonemes
+            ? "bg-indigo-600 text-white border-indigo-600"
+            : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+            }`}
+        >
+          {showPhonemes ? "Hide phonemes" : "Show phonemes"}
+        </button>
+
+        <IPAReference />
       </div>
 
       {/* Free Text mode */}
@@ -236,6 +274,7 @@ export default function Home() {
                 sentenceAudioUrls={sentenceAudioUrls}
                 results={sentenceResults}
                 isAnyBusy={isAnyBusy}
+                previewPhonemes={showPhonemes ? previewPhonemes : {}}
                 onRecord={startRecording}
                 onStop={stopRecording}
                 onSend={sendAudio}
@@ -279,6 +318,7 @@ export default function Home() {
                 sentenceAudioUrls={sentenceAudioUrls}
                 results={sentenceResults}
                 isAnyBusy={isAnyBusy}
+                previewPhonemes={showPhonemes ? previewPhonemes : {}}
                 onRecord={startRecording}
                 onStop={stopRecording}
                 onSend={sendAudio}

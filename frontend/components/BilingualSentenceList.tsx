@@ -32,6 +32,7 @@ interface BilingualSentenceListProps {
     sentenceAudioUrls: Record<number, string>;
     results: Record<number, AnalyzeResponse>;
     isAnyBusy: boolean;
+    previewPhonemes?: Record<string, string[]>;
     onRecord: (i: number) => void;
     onStop: () => void;
     onSend: () => void;
@@ -46,6 +47,7 @@ export default function BilingualSentenceList({
     sentenceAudioUrls,
     results,
     isAnyBusy,
+    previewPhonemes = {},
     onRecord,
     onStop,
     onSend,
@@ -99,6 +101,33 @@ export default function BilingualSentenceList({
                                 )}
                             </div>
                         </div>
+
+                        {/* phoneme preview chips (English side only) */}
+                        {Object.keys(previewPhonemes).length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                                {pair.english
+                                    .toLowerCase()
+                                    .replace(/[^a-z'\s]/g, "")
+                                    .split(/\s+/)
+                                    .filter(Boolean)
+                                    .map((word, wi) => {
+                                        const ph = previewPhonemes[word];
+                                        if (!ph) return null;
+                                        return (
+                                            <span key={wi} className="flex gap-0.5">
+                                                {ph.map((p, pi) => (
+                                                    <span
+                                                        key={pi}
+                                                        className="inline-block rounded bg-gray-100 px-1 py-0.5 text-xs text-gray-500 font-mono"
+                                                    >
+                                                        {p}
+                                                    </span>
+                                                ))}
+                                            </span>
+                                        );
+                                    })}
+                            </div>
+                        )}
 
                         {tooLong && (
                             <p className="mt-1 text-xs text-red-500">
