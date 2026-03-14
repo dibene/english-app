@@ -161,6 +161,21 @@ def test_assess_word_has_error_type(provider: AzurePronunciationProvider) -> Non
     assert result.words[0].error_type == "Mispronunciation"
 
 
+def test_assess_insertion_words_are_filtered(provider: AzurePronunciationProvider) -> None:
+    """Azure Insertion words (phantom miscue detections) must not appear in the result."""
+    words = [
+        _make_word("hello", 90.0, "None", []),
+        _make_word("mostly", 24.0, "Insertion", []),  # phantom duplicate
+        _make_word("world", 80.0, "None", []),
+    ]
+    sdk_result = _make_sdk_result(json_str=_make_json_result(words))
+    result = provider._parse_words(sdk_result)
+
+    assert len(result) == 2
+    assert result[0].word == "hello"
+    assert result[1].word == "world"
+
+
 def test_assess_word_has_phoneme_scores(provider: AzurePronunciationProvider) -> None:
     phonemes = [_make_phoneme("w", 80.0), _make_phoneme("er", 45.0), _make_phoneme("l", 90.0)]
     words = [_make_word("world", 70.0, "Mispronunciation", phonemes)]

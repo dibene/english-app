@@ -164,6 +164,14 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
 
         for w in words_data:
             pa = w.get("PronunciationAssessment", {})
+
+            # Skip Azure "Insertion" words — these are phantom detections produced by
+            # Azure's own miscue alignment that don't correspond to words the user actually
+            # said.  Our SequenceMatcher in text_comparison handles insertion detection
+            # independently and more reliably.
+            if pa.get("ErrorType") == "Insertion":
+                continue
+
             phonemes_data = w.get("Phonemes", [])
 
             phoneme_scores: list[PhonemeScore] = [
