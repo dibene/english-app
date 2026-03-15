@@ -11,6 +11,7 @@ export interface SessionEntry {
 interface SessionPanelProps {
     entries: SessionEntry[];
     onClear: () => void;
+    onRemoveEntry: (index: number) => void;
 }
 
 function scoreColour(n: number): string {
@@ -19,7 +20,7 @@ function scoreColour(n: number): string {
     return "text-red-700 bg-red-100 border-red-300";
 }
 
-export default function SessionPanel({ entries, onClear }: SessionPanelProps) {
+export default function SessionPanel({ entries, onClear, onRemoveEntry }: SessionPanelProps) {
     const [showJson, setShowJson] = useState(false);
     const [llmSuggestions, setLlmSuggestions] = useState<string[] | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -48,7 +49,9 @@ export default function SessionPanel({ entries, onClear }: SessionPanelProps) {
         setAnalyzeError(null);
         setLlmSuggestions(null);
         try {
-            const suggestions = await feedbackBatch(feedbackData);
+            const n = entries.length;
+            const maxSuggestions = n >= 16 ? 7 : n >= 6 ? 5 : n >= 2 ? 4 : 3;
+            const suggestions = await feedbackBatch(feedbackData, maxSuggestions);
             setLlmSuggestions(suggestions);
         } catch (err) {
             setAnalyzeError(err instanceof Error ? err.message : "LLM request failed.");
@@ -80,7 +83,15 @@ export default function SessionPanel({ entries, onClear }: SessionPanelProps) {
                         >
                             {entry.result.score}
                         </span>
-                        <span className="text-gray-700">{entry.sentence}</span>
+                        <span className="flex-1 text-gray-700">{entry.sentence}</span>
+                        <button
+                            onClick={() => onRemoveEntry(i)}
+                            title="Remove this result"
+                            className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors leading-none"
+                            aria-label="Remove result"
+                        >
+                            ×
+                        </button>
                     </li>
                 ))}
             </ol>

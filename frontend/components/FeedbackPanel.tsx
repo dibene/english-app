@@ -67,9 +67,24 @@ function WordCard({ word }: { word: WordOut }) {
   return (
     <div className="flex flex-col items-center gap-1">
       {/* word pill */}
-      <span className={`rounded px-2 py-0.5 text-sm font-medium ${wordBg(word.status)}`}>
-        {word.expected_word ?? word.spoken_word ?? "—"}
-      </span>
+      {(() => {
+        const label = word.expected_word ?? word.spoken_word ?? "—";
+        const clean = label.replace(/[^a-zA-Z'-]/g, "").toLowerCase();
+        return clean ? (
+          <a
+            href={`https://www.wordreference.com/enes/${clean}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`rounded px-2 py-0.5 text-sm font-medium underline decoration-dotted underline-offset-2 hover:opacity-80 ${wordBg(word.status)}`}
+          >
+            {label}
+          </a>
+        ) : (
+          <span className={`rounded px-2 py-0.5 text-sm font-medium ${wordBg(word.status)}`}>
+            {label}
+          </span>
+        );
+      })()}
 
       {/* phoneme row */}
       {hasPhonemes && (
@@ -117,13 +132,33 @@ export default function FeedbackPanel({ result, onReRecord }: FeedbackPanelProps
         )}
       </div>
 
-      {/* word row */}
+      {/* word row — only expected-sentence words (ok / mispronounced / missing) */}
       {words.length > 0 && (
-        <div className="flex flex-wrap gap-3">
-          {words.map((w, i) => (
-            <WordCard key={i} word={w} />
-          ))}
-        </div>
+        <>
+          <div className="flex flex-wrap gap-3">
+            {words
+              .filter((w) => w.status !== "inserted")
+              .map((w, i) => (
+                <WordCard key={i} word={w} />
+              ))}
+          </div>
+          {/* extra/inserted words shown separately so they don't disrupt the sentence flow */}
+          {words.some((w) => w.status === "inserted") && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+              <span className="font-medium">Extra words detected:</span>
+              {words
+                .filter((w) => w.status === "inserted")
+                .map((w, i) => (
+                  <span
+                    key={i}
+                    className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-500 border border-blue-200"
+                  >
+                    {w.spoken_word ?? "—"}
+                  </span>
+                ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* suggestions */}
@@ -138,13 +173,7 @@ export default function FeedbackPanel({ result, onReRecord }: FeedbackPanelProps
         </div>
       )}
 
-      {/* re-record */}
-      <button
-        onClick={onReRecord}
-        className="px-4 py-2 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
-      >
-        Re-record
-      </button>
+      {/* re-record button removed — now lives in the row header top-right for consistent position */}
     </div>
   );
 }

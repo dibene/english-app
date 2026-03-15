@@ -530,6 +530,24 @@ Strip trailing digits before comparing to `phoneme_scores[i].phoneme` (e.g. "ER1
 
 ---
 
+### D-008 — Phoneme Preview Before Recording ✅ Done
+**Priority:** P1
+**Slug:** phoneme-preview-before-recording
+
+Show expected phonemes under each sentence *before* recording so the user knows how to pronounce each word.
+
+**Scope:**
+
+- **Phoneme chips:** A "Show phonemes" toggle fetches `POST /phonemes` with all words in the current text. The backend looks up the CMU Pronouncing Dictionary (already loaded in memory via `_get_phonemes()`) and returns `{ word → [IPA symbols] }`. Chips are rendered below each sentence row in both Free Text and Bilingual modes. Per-sentence inline edits also refresh the phoneme display.
+
+- **IPA reference guide:** Toggling "IPA guide" opens a sticky side panel next to the sentence list showing all 16 English vowels and 24 consonants, each with IPA symbol, ARPAbet code, a plain-language description, and an example word. The panel is visible alongside the sentence list so you can read and record at the same time.
+
+- **Per-entry session clear:** Each row in the Session Results panel has a × button to remove that result individually without clearing the whole session.
+
+- **Inline sentence editing:** A ✏️ button on each sentence row lets the user fix a typo directly in place. Only that sentence's recorded result is cleared — all other results are preserved. Pressing Enter or clicking away commits the edit; Esc cancels. Editing the main textarea still resets everything as before.
+
+- **Unified action buttons:** Record / Stop / Send / Re-record all occupy the same top-right slot in each row — the button is context-aware per state so the user's eye and pointer never need to travel.
+
 ## Infrastructure Features
 
 ### F-010 - Local Dev Setup and README
@@ -563,4 +581,3 @@ frontend (npm install, env vars, run dev). .env.example files for both.
 | D-005 | Mobile native app              | Out of MVP scope                             |
 | D-006 | Streaming feedback             | Out of MVP scope                             |
 | D-007 | Phoneme-level display          | Phoneme data flows through pipeline (Azure); display promoted to F-007 scope |
-| D-008 | Phoneme preview before recording | Show expected ARPAbet phonemes below each sentence *before* the user records, so they know how to pronounce it. Toggle on/off via a "Show phonemes" mode switch. When enabled, on load/text-change the frontend sends `POST /phonemes` with the list of words from all sentences; the backend looks up CMUdict and returns `{ word → ["AY1","L"] }` for each; the frontend renders them as grey chips under each sentence row. Backend endpoint is trivial — CMUdict is already loaded in memory and `_get_phonemes()` already exists in `text_comparison.py`. Estimated backend work: ~30 min (new `/phonemes` route + `PhonemeRequest/Response` models). Frontend: pass results into `SentenceList` / `BilingualSentenceList` as a `previewPhonemes` prop and render neutral chips above the record button. |

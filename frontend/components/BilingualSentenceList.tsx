@@ -32,6 +32,7 @@ interface BilingualSentenceListProps {
     sentenceAudioUrls: Record<number, string>;
     results: Record<number, AnalyzeResponse>;
     isAnyBusy: boolean;
+    previewPhonemes?: Record<string, string[]>;
     onRecord: (i: number) => void;
     onStop: () => void;
     onSend: () => void;
@@ -46,6 +47,7 @@ export default function BilingualSentenceList({
     sentenceAudioUrls,
     results,
     isAnyBusy,
+    previewPhonemes = {},
     onRecord,
     onStop,
     onSend,
@@ -79,7 +81,7 @@ export default function BilingualSentenceList({
                                 <span className="text-gray-400 italic">{pair.spanish}</span>
                                 <span className="text-gray-900 font-medium">{pair.english}</span>
                             </div>
-                            <div className="flex-shrink-0">
+                            <div className="flex-shrink-0 flex gap-1 items-center">
                                 {isRowRecording ? (
                                     <button
                                         onClick={onStop}
@@ -87,11 +89,35 @@ export default function BilingualSentenceList({
                                     >
                                         ⏹ Stop
                                     </button>
+                                ) : isRowPreview ? (
+                                    <>
+                                        <button
+                                            onClick={onSend}
+                                            className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium"
+                                        >
+                                            ✓ Send
+                                        </button>
+                                        <button
+                                            onClick={() => onReRecord(i)}
+                                            title="Re-record"
+                                            className="px-2.5 py-1 border border-gray-300 rounded text-xs text-gray-600 hover:bg-gray-100"
+                                        >
+                                            🎤
+                                        </button>
+                                    </>
+                                ) : isRowProcessing ? (
+                                    <span className="px-2.5 py-1 text-xs text-gray-400">⌛</span>
                                 ) : (
                                     <button
-                                        onClick={() => onRecord(i)}
-                                        disabled={isAnyBusy || isRowProcessing || tooLong}
-                                        title={tooLong ? `Sentence exceeds ${MAX_SENTENCE_CHARS} characters` : "Record"}
+                                        onClick={hasResult ? () => onReRecord(i) : () => onRecord(i)}
+                                        disabled={isAnyBusy || tooLong}
+                                        title={
+                                            tooLong
+                                                ? `Sentence exceeds ${MAX_SENTENCE_CHARS} characters`
+                                                : hasResult
+                                                    ? "Re-record"
+                                                    : "Record"
+                                        }
                                         className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-40"
                                     >
                                         🎤
@@ -99,6 +125,36 @@ export default function BilingualSentenceList({
                                 )}
                             </div>
                         </div>
+
+                        {/* phoneme preview — word label + chips below, matching FeedbackPanel layout */}
+                        {Object.keys(previewPhonemes).length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                                {pair.english
+                                    .toLowerCase()
+                                    .replace(/[^a-z'\s]/g, "")
+                                    .split(/\s+/)
+                                    .filter(Boolean)
+                                    .map((word, wi) => {
+                                        const ph = previewPhonemes[word];
+                                        if (!ph) return null;
+                                        return (
+                                            <div key={wi} className="flex flex-col items-center gap-1">
+                                                <span className="text-xs text-gray-500">{word}</span>
+                                                <div className="flex flex-wrap justify-center gap-1">
+                                                    {ph.map((p, pi) => (
+                                                        <span
+                                                            key={pi}
+                                                            className="rounded border border-gray-300 bg-gray-100 px-1 py-0.5 text-xs font-mono font-semibold text-gray-500"
+                                                        >
+                                                            {p}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        )}
 
                         {tooLong && (
                             <p className="mt-1 text-xs text-red-500">
@@ -110,25 +166,11 @@ export default function BilingualSentenceList({
                             <p className="mt-1 text-xs text-gray-400 italic">Processing…</p>
                         )}
 
-                        {/* inline audio preview */}
+                        {/* inline audio preview — buttons are in the top-right zone above */}
                         {isRowPreview && audioUrl && (
-                            <div className="mt-2 space-y-2 pt-2 border-t border-blue-200">
+                            <div className="mt-2 pt-2 border-t border-blue-200">
                                 {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                                 <audio controls src={audioUrl} className="w-full" />
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={onSend}
-                                        className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs"
-                                    >
-                                        Send
-                                    </button>
-                                    <button
-                                        onClick={() => onReRecord(i)}
-                                        className="px-3 py-1.5 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100"
-                                    >
-                                        Re-record
-                                    </button>
-                                </div>
                             </div>
                         )}
 

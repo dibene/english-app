@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AnalyzeResponse } from "../lib/api";
 import FeedbackPanel from "./FeedbackPanel";
 
@@ -22,10 +23,12 @@ interface SentenceListProps {
   sentenceAudioUrls: Record<number, string>;
   results: Record<number, AnalyzeResponse>;
   isAnyBusy: boolean;
+  previewPhonemes?: Record<string, string[]>;
   onRecord: (i: number) => void;
   onStop: () => void;
   onSend: () => void;
   onReRecord: (i: number) => void;
+  onEditSentence?: (i: number, text: string) => void;
 }
 
 export default function SentenceList({
@@ -36,11 +39,16 @@ export default function SentenceList({
   sentenceAudioUrls,
   results,
   isAnyBusy,
+  previewPhonemes = {},
   onRecord,
   onStop,
   onSend,
   onReRecord,
+  onEditSentence,
 }: SentenceListProps) {
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState("");
+
   if (sentences.length === 0) return null;
 
   return (
@@ -67,12 +75,44 @@ export default function SentenceList({
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <span className="flex-shrink-0 text-xs text-gray-400">{i + 1}.</span>
-                <span className="text-gray-900">{sentence}</span>
+                {editingIdx === i ? (
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        onEditSentence?.(i, editValue.trim() || sentence);
+                        setEditingIdx(null);
+                      } else if (e.key === "Escape") {
+                        setEditingIdx(null);
+                      }
+                    }}
+                    onBlur={() => {
+                      onEditSentence?.(i, editValue.trim() || sentence);
+                      setEditingIdx(null);
+                    }}
+                    className="flex-1 min-w-0 border-b border-blue-400 bg-transparent text-sm text-gray-900 outline-none"
+                  />
+                ) : (
+                  <>
+                    <span className="text-gray-900">{sentence}</span>
+                    {onEditSentence && !isAnyBusy && !isRowRecording && !isRowProcessing && (
+                      <button
+                        onClick={() => { setEditingIdx(i); setEditValue(sentence); }}
+                        title="Edit sentence"
+                        className="flex-shrink-0 text-gray-300 hover:text-gray-500 text-xs leading-none"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </>
+                )}
                 {isRowProcessing && (
                   <span className="ml-1 text-xs text-gray-400 italic">Processing…</span>
                 )}
               </div>
-              <div className="flex-shrink-0">
+              <div className="flex-shrink-0 flex gap-1 items-center">
                 {isRowRecording ? (
                   <button
                     onClick={onStop}
@@ -80,11 +120,35 @@ export default function SentenceList({
                   >
                     ⏹ Stop
                   </button>
+                ) : isRowPreview ? (
+                  <>
+                    <button
+                      onClick={onSend}
+                      className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium"
+                    >
+                      ✓ Send
+                    </button>
+                    <button
+                      onClick={() => onReRecord(i)}
+                      title="Re-record"
+                      className="px-2.5 py-1 border border-gray-300 rounded text-xs text-gray-600 hover:bg-gray-100"
+                    >
+                      🎤
+                    </button>
+                  </>
+                ) : isRowProcessing ? (
+                  <span className="px-2.5 py-1 text-xs text-gray-400">⌛</span>
                 ) : (
                   <button
-                    onClick={() => onRecord(i)}
-                    disabled={isAnyBusy || isRowProcessing || tooLong}
-                    title={tooLong ? `Sentence exceeds ${MAX_SENTENCE_CHARS} characters` : "Record"}
+                    onClick={hasResult ? () => onReRecord(i) : () => onRecord(i)}
+                    disabled={isAnyBusy || tooLong}
+                    title={
+                      tooLong
+                        ? `Sentence exceeds ${MAX_SENTENCE_CHARS} characters`
+                        : hasResult
+                          ? "Re-record"
+                          : "Record"
+                    }
                     className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-40"
                   >
                     🎤
@@ -93,31 +157,47 @@ export default function SentenceList({
               </div>
             </div>
 
+            {/* phoneme preview — word label + chips below, matching FeedbackPanel layout */}
+            {Object.keys(previewPhonemes).length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                {sentence
+                  .toLowerCase()
+                  .replace(/[^a-z'\s]/g, "")
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .map((word, wi) => {
+                    const ph = previewPhonemes[word];
+                    if (!ph) return null;
+                    return (
+                      <div key={wi} className="flex flex-col items-center gap-1">
+                        <span className="text-xs text-gray-500">{word}</span>
+                        <div className="flex flex-wrap justify-center gap-1">
+                          {ph.map((p, pi) => (
+                            <span
+                              key={pi}
+                              className="rounded border border-gray-300 bg-gray-100 px-1 py-0.5 text-xs font-mono font-semibold text-gray-500"
+                            >
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+
             {tooLong && (
               <p className="mt-1 text-xs text-red-500">
                 Sentence too long ({sentence.length}/{MAX_SENTENCE_CHARS} chars) — shorten it to record.
               </p>
             )}
 
-            {/* inline audio preview */}
+            {/* inline audio preview — buttons are in the top-right zone above */}
             {isRowPreview && audioUrl && (
-              <div className="mt-2 space-y-2 pt-2 border-t border-blue-200">
+              <div className="mt-2 pt-2 border-t border-blue-200">
                 {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                 <audio controls src={audioUrl} className="w-full" />
-                <div className="flex gap-2">
-                  <button
-                    onClick={onSend}
-                    className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs"
-                  >
-                    Send
-                  </button>
-                  <button
-                    onClick={() => onReRecord(i)}
-                    className="px-3 py-1.5 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100"
-                  >
-                    Re-record
-                  </button>
-                </div>
               </div>
             )}
 
