@@ -173,13 +173,7 @@ export default function FeedbackPanel({ result, onReRecord }: FeedbackPanelProps
         </div>
       )}
 
-      {/* re-record */}
-      <button
-        onClick={onReRecord}
-        className="px-4 py-2 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
-      >
-        Re-record
-      </button>
+      {/* re-record button removed — now lives in the row header top-right for consistent position */}
     </div>
   );
 }

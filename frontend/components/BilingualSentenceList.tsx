@@ -81,7 +81,7 @@ export default function BilingualSentenceList({
                                 <span className="text-gray-400 italic">{pair.spanish}</span>
                                 <span className="text-gray-900 font-medium">{pair.english}</span>
                             </div>
-                            <div className="flex-shrink-0">
+                            <div className="flex-shrink-0 flex gap-1 items-center">
                                 {isRowRecording ? (
                                     <button
                                         onClick={onStop}
@@ -89,11 +89,35 @@ export default function BilingualSentenceList({
                                     >
                                         ⏹ Stop
                                     </button>
+                                ) : isRowPreview ? (
+                                    <>
+                                        <button
+                                            onClick={onSend}
+                                            className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium"
+                                        >
+                                            ✓ Send
+                                        </button>
+                                        <button
+                                            onClick={() => onReRecord(i)}
+                                            title="Re-record"
+                                            className="px-2.5 py-1 border border-gray-300 rounded text-xs text-gray-600 hover:bg-gray-100"
+                                        >
+                                            🎤
+                                        </button>
+                                    </>
+                                ) : isRowProcessing ? (
+                                    <span className="px-2.5 py-1 text-xs text-gray-400">⌛</span>
                                 ) : (
                                     <button
-                                        onClick={() => onRecord(i)}
-                                        disabled={isAnyBusy || isRowProcessing || tooLong}
-                                        title={tooLong ? `Sentence exceeds ${MAX_SENTENCE_CHARS} characters` : "Record"}
+                                        onClick={hasResult ? () => onReRecord(i) : () => onRecord(i)}
+                                        disabled={isAnyBusy || tooLong}
+                                        title={
+                                            tooLong
+                                                ? `Sentence exceeds ${MAX_SENTENCE_CHARS} characters`
+                                                : hasResult
+                                                ? "Re-record"
+                                                : "Record"
+                                        }
                                         className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-40"
                                     >
                                         🎤
@@ -139,25 +163,11 @@ export default function BilingualSentenceList({
                             <p className="mt-1 text-xs text-gray-400 italic">Processing…</p>
                         )}
 
-                        {/* inline audio preview */}
+                        {/* inline audio preview — buttons are in the top-right zone above */}
                         {isRowPreview && audioUrl && (
-                            <div className="mt-2 space-y-2 pt-2 border-t border-blue-200">
+                            <div className="mt-2 pt-2 border-t border-blue-200">
                                 {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                                 <audio controls src={audioUrl} className="w-full" />
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={onSend}
-                                        className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs"
-                                    >
-                                        Send
-                                    </button>
-                                    <button
-                                        onClick={() => onReRecord(i)}
-                                        className="px-3 py-1.5 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100"
-                                    >
-                                        Re-record
-                                    </button>
-                                </div>
                             </div>
                         )}
 
