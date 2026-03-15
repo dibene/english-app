@@ -546,6 +546,7 @@ Show expected phonemes under each sentence *before* recording so the user knows 
 
 - **Inline sentence editing:** A ✏️ button on each sentence row lets the user fix a typo directly in place. Only that sentence's recorded result is cleared — all other results are preserved. Pressing Enter or clicking away commits the edit; Esc cancels. Editing the main textarea still resets everything as before.
 
+- **Unified action buttons:** Record / Stop / Send / Re-record all occupy the same top-right slot in each row — the button is context-aware per state so the user's eye and pointer never need to travel.
 
 ## Infrastructure Features
 
@@ -580,4 +581,3 @@ frontend (npm install, env vars, run dev). .env.example files for both.
 | D-005 | Mobile native app              | Out of MVP scope                             |
 | D-006 | Streaming feedback             | Out of MVP scope                             |
 | D-007 | Phoneme-level display          | Phoneme data flows through pipeline (Azure); display promoted to F-007 scope |
-
