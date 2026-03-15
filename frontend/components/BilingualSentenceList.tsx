@@ -115,8 +115,8 @@ export default function BilingualSentenceList({
                                             tooLong
                                                 ? `Sentence exceeds ${MAX_SENTENCE_CHARS} characters`
                                                 : hasResult
-                                                ? "Re-record"
-                                                : "Record"
+                                                    ? "Re-record"
+                                                    : "Record"
                                         }
                                         className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-40"
                                     >

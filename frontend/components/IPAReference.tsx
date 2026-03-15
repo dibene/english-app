@@ -99,8 +99,8 @@ export default function IPAReference({ active, onToggle }: { active: boolean; on
     <button
       onClick={onToggle}
       className={`px-3 py-1 rounded-md text-xs font-medium border transition-colors ${active
-          ? "bg-indigo-600 text-white border-indigo-600"
-          : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+        ? "bg-indigo-600 text-white border-indigo-600"
+        : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
         }`}
       aria-expanded={active}
     >
