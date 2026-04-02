@@ -291,19 +291,19 @@ def test_expected_phonemes_none_for_unknown_word() -> None:
     assert result.entries[0].expected_phonemes is None
 
 
-def test_expected_phonemes_letter_by_letter_for_acronym() -> None:
-    """Words not in cmudict but purely alphabetic (acronyms) get letter-name phonemes."""
+def test_expected_phonemes_neural_fallback_for_unknown_words() -> None:
+    """Words not in cmudict get phonemes via the g2p-en neural fallback."""
     from core.services.text_comparison import _get_phonemes
 
-    # "apis" is not in cmudict; should be spelled out A-P-I-S
+    # "apis" is not in cmudict; g2p-en pronounces it as a word ("AY-pis")
     phonemes = _get_phonemes("apis")
     assert phonemes is not None
-    assert "eɪ" in phonemes  # letter A
-    assert "aɪ" in phonemes  # letter I
+    assert len(phonemes) > 0
 
-    # Single letter lookups
+    # Common tech acronyms: g2p-en spells them out correctly
     assert _get_phonemes("url") is not None  # U-R-L
     assert _get_phonemes("sql") is not None  # S-Q-L
+    assert _get_phonemes("http") is not None  # H-T-T-P
 
 
 # ---------------------------------------------------------------------------

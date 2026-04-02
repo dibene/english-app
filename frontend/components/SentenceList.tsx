@@ -157,9 +157,9 @@ export default function SentenceList({
               </div>
             </div>
 
-            {/* phoneme preview — word label + chips below, matching FeedbackPanel layout */}
+            {/* phoneme preview — word label + /ipa/ below */}
             {Object.keys(previewPhonemes).length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                 {sentence
                   .toLowerCase()
                   .replace(/[^a-z'\s]/g, "")
@@ -169,18 +169,9 @@ export default function SentenceList({
                     const ph = previewPhonemes[word];
                     if (!ph) return null;
                     return (
-                      <div key={wi} className="flex flex-col items-center gap-1">
-                        <span className="text-xs text-gray-500">{word}</span>
-                        <div className="flex flex-wrap justify-center gap-1">
-                          {ph.map((p, pi) => (
-                            <span
-                              key={pi}
-                              className="rounded border border-gray-300 bg-gray-100 px-1 py-0.5 text-xs font-mono font-semibold text-gray-500"
-                            >
-                              {p}
-                            </span>
-                          ))}
-                        </div>
+                      <div key={wi} className="flex flex-col items-center gap-0.5">
+                        <span className="text-sm font-medium text-gray-700">{word}</span>
+                        <span className="text-xs font-mono text-indigo-500">/{ph.join("")}/</span>
                       </div>
                     );
                   })}

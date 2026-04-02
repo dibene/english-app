@@ -1,9 +1,15 @@
 """Text comparison engine: diffs expected text against a PronunciationResult."""
 
+import functools
 import string
 from difflib import SequenceMatcher
+from typing import TYPE_CHECKING
 
 import cmudict
+import nltk
+
+if TYPE_CHECKING:
+    from g2p_en import G2p as G2pType
 
 from core.models.diff import DiffEntry, DiffResult
 from core.models.pronunciation import PronunciationResult
@@ -46,7 +52,7 @@ _ARPABET_TO_IPA: dict[str, str] = {
     "N": "n",
     "NG": "ŋ",
     "P": "p",
-    "R": "r",
+    "R": "ɹ",
     "S": "s",
     "SH": "ʃ",
     "T": "t",
@@ -59,9 +65,88 @@ _ARPABET_TO_IPA: dict[str, str] = {
 }
 
 
+# Manual IPA overrides for words where g2p-en produces the wrong result.
+# Add entries here only when the neural fallback gets a specific word wrong.
+_CUSTOM_WORDS: dict[str, list[str]] = {}
+
+# Vowels that fuse with a following /ɹ/ into a rhotic phoneme (Azure en-US).
+_RHOTIC_VOWELS: frozenset[str] = frozenset({"ɛ", "ɑ", "ɔ", "ʊ", "ɪ", "i", "æ"})
+
+# All vowels and diphthongs — used to detect vowel + ɝ sequences where ɝ
+# acts as a coda /ɹ/ rather than a standalone syllabic r (e.g. "our" = aʊɹ,
+# "fire" = faɪɹ, "layer" = leɪɹ). Contrast with "butter" where ɝ follows a
+# consonant and stays standalone.
+_ALL_VOWELS: frozenset[str] = frozenset(
+    {
+        "ɑ",
+        "æ",
+        "ʌ",
+        "ɔ",
+        "ɛ",
+        "ɝ",
+        "ɪ",
+        "i",
+        "ʊ",
+        "u",
+        "ə",
+        "aʊ",
+        "aɪ",
+        "eɪ",
+        "oʊ",
+        "ɔɪ",
+    }
+)
+
+
+def _merge_rhotics(phonemes: list[str]) -> list[str]:
+    """Merge rhotic clusters into single phonemes matching Azure en-US output.
+
+    Two cases:
+    - vowel + ɹ  → vowelɹ   (e.g. ˈɛ + ɹ → ˈɛɹ  for "there", "very")
+    - vowel + ɝ  → vowelɹ   (e.g. ˈaʊ + ɝ → ˈaʊɹ for "our", "fire")
+      Only when the preceding phoneme is a vowel/diphthong; standalone ɝ
+      after a consonant (e.g. "butter") is left untouched.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(phonemes):
+        ph = phonemes[i]
+        stress = ph[0] if ph and ph[0] in "ˈˌ" else ""
+        base = ph[len(stress) :]
+        next_ph = phonemes[i + 1] if i + 1 < len(phonemes) else None
+        if base in _RHOTIC_VOWELS and next_ph == "ɹ":
+            # simple vowel + ɹ  →  vowelɹ
+            out.append(stress + base + "ɹ")
+            i += 2
+        elif base in _ALL_VOWELS and next_ph == "ɝ":
+            # vowel/diphthong + ɝ  →  vowelɹ  (trailing rhotic coda)
+            out.append(stress + base + "ɹ")
+            i += 2
+        else:
+            out.append(ph)
+            i += 1
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def _g2p() -> "G2pType":
+    """Lazy singleton for the G2p model. Downloads NLTK data on first call."""
+    for pkg, path in [
+        ("averaged_perceptron_tagger_eng", "taggers/averaged_perceptron_tagger_eng/"),
+        ("cmudict", "corpora/cmudict"),
+    ]:
+        try:
+            nltk.data.find(path)
+        except LookupError:
+            nltk.download(pkg, quiet=True)
+    from g2p_en import G2p
+
+    return G2p()
+
+
 # Standard English letter-name pronunciations in IPA.
-# Used as fallback when a word is not in CMUdict — typically acronyms like
-# "APIs", "URL", "HTTP", "SQL" that cmudict doesn't have entries for.
+# Used as last-resort fallback for likely acronyms (short all-alpha tokens
+# not resolved by CMUdict or the g2p-en neural model).
 _LETTER_PHONEMES: dict[str, list[str]] = {
     "a": ["eɪ"],
     "b": ["b", "i"],
@@ -93,7 +178,12 @@ _LETTER_PHONEMES: dict[str, list[str]] = {
 
 
 def _arpabet_to_ipa(phoneme: str) -> str:
-    """Convert an ARPAbet phoneme (with optional stress digit) to IPA."""
+    """Convert an ARPAbet phoneme (with optional stress digit) to IPA.
+
+    Stress digits:  0 = unstressed, 1 = primary (ˈ), 2 = secondary (ˌ).
+    The stress marker is prepended to the IPA vowel so that when the phoneme
+    list is joined the result reads e.g. /sˈɪstəm/ (marked on the stressed vowel).
+    """
     if phoneme and phoneme[-1].isdigit():
         stress, base = phoneme[-1], phoneme[:-1]
     else:
@@ -101,7 +191,12 @@ def _arpabet_to_ipa(phoneme: str) -> str:
     # AH0 is the unstressed schwa; AH1/AH2 is the stressed "uh" sound.
     if base == "AH" and stress == "0":
         return "ə"
-    return _ARPABET_TO_IPA.get(base, phoneme.lower())
+    ipa = _ARPABET_TO_IPA.get(base, phoneme.lower())
+    if stress == "1":
+        return "ˈ" + ipa
+    if stress == "2":
+        return "ˌ" + ipa
+    return ipa
 
 
 def _normalize(text: str) -> list[str]:
@@ -115,25 +210,36 @@ def _normalize(text: str) -> list[str]:
 
 
 def _get_phonemes(word: str) -> list[str] | None:
-    """Return IPA phoneme list for word using cmudict, or None if unknown.
+    """Return IPA phoneme list for word using cmudict, g2p-en, or letter-spelling.
 
-    If the word is not in cmudict and is purely alphabetic (e.g. an acronym
-    like 'apis', 'url', 'http'), falls back to spelling it out letter by letter
-    using standard English letter-name pronunciations.
+    Lookup order:
+    1. CMUdict — fast, covers ~130k common English words.
+    2. _CUSTOM_WORDS — manual IPA overrides for words g2p-en gets wrong.
+    3. g2p-en neural model — handles tech words, compounds, neologisms.
+    4. Letter-spelling — last resort for acronyms (URL, HTTP, SQL).
     """
-    pronunciations = _CMUDICT.get(word.lower())
+    key = word.lower()
+    pronunciations = _CMUDICT.get(key)
     if pronunciations:
-        return [_arpabet_to_ipa(p) for p in pronunciations[0]]
-    # Acronym fallback: spell out each letter by its English name.
-    # Covers "APIs" → "apis" → A-P-I-S, "URL", "HTTP", "SQL", etc.
+        return _merge_rhotics([_arpabet_to_ipa(p) for p in pronunciations[0]])
+    # Manual overrides (e.g. words where the neural model is wrong).
+    if key in _CUSTOM_WORDS:
+        return _CUSTOM_WORDS[key]
+    # Neural grapheme-to-phoneme fallback via g2p-en.
     if word.isalpha():
-        letter_phones: list[str] = []
-        for ch in word.lower():
-            phones = _LETTER_PHONEMES.get(ch)
-            if phones is None:  # pragma: no cover  — all a-z are in the table
-                return None
-            letter_phones.extend(phones)
-        return letter_phones
+        try:
+            arpabet_phones: list[str] = _g2p()(key)
+            # g2p-en returns space tokens for whitespace; filter those out.
+            return _merge_rhotics([_arpabet_to_ipa(p) for p in arpabet_phones if p != " "])
+        except Exception:  # noqa: BLE001 — keep alive if model unavailable
+            # Final fallback: spell out letter by letter (acronym mode).
+            letter_phones: list[str] = []
+            for ch in key:
+                phones = _LETTER_PHONEMES.get(ch)
+                if phones is None:  # pragma: no cover
+                    return None
+                letter_phones.extend(phones)
+            return letter_phones
     return None
 
 

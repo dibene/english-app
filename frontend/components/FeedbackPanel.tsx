@@ -22,8 +22,15 @@ function normalisePhoneme(p: string): string {
   return p.toLowerCase();
 }
 
+// Strip IPA stress markers before comparing expected vs spoken so that
+// ˈaɪ and aɪ are treated as the same phoneme.
+// Also normalise ɹ (turned r, Azure) ↔ r (straight r) so they match.
+function stripStress(p: string): string {
+  return p.replace(/[ˈˌ]/g, "").replace(/ɹ/g, "r").toLowerCase();
+}
+
 function phonemeDiffers(expected: string, spoken: string): boolean {
-  return normalisePhoneme(expected) !== normalisePhoneme(spoken);
+  return stripStress(expected) !== stripStress(spoken);
 }
 
 // ── PhonemeChip ──────────────────────────────────────────────────────────────
@@ -46,11 +53,11 @@ function PhonemeChip({ expected, score, spoken }: PhonemeChipProps) {
 
   return (
     <div className="flex flex-col items-center">
-      <span className={`rounded border px-1 py-0.5 text-xs font-mono font-semibold ${chipColour}`}>
+      <span className={`rounded border px-1 py-px text-xs font-mono font-semibold leading-tight ${chipColour}`}>
         {label}
       </span>
       {showSpoken && (
-        <span className="mt-0.5 text-[10px] text-gray-400 font-mono">
+        <span className="mt-0.5 text-[9px] text-gray-400 font-mono">
           {spoken.toLowerCase()}
         </span>
       )}
@@ -75,12 +82,12 @@ function WordCard({ word }: { word: WordOut }) {
             href={`https://www.wordreference.com/enes/${clean}`}
             target="_blank"
             rel="noopener noreferrer"
-            className={`rounded px-2 py-0.5 text-sm font-medium underline decoration-dotted underline-offset-2 hover:opacity-80 ${wordBg(word.status)}`}
+            className={`rounded px-2 py-0.5 text-lg font-semibold underline decoration-dotted underline-offset-2 hover:opacity-80 ${wordBg(word.status)}`}
           >
             {label}
           </a>
         ) : (
-          <span className={`rounded px-2 py-0.5 text-sm font-medium ${wordBg(word.status)}`}>
+          <span className={`rounded px-2 py-0.5 text-lg font-semibold ${wordBg(word.status)}`}>
             {label}
           </span>
         );
