@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { analyze, AnalyzeResponse } from "../lib/api";
+import { analyze, AnalyzeResponse, getPhonemes } from "../lib/api";
 import SentenceList, { splitSentences } from "../components/SentenceList";
 import BilingualSentenceList, { parseBilingualText } from "../components/BilingualSentenceList";
 import SessionPanel, { SessionEntry } from "../components/SessionPanel";
+import IPAReference, { IPAReferencePanel } from "../components/IPAReference";
 
 type RecorderStatus = "idle" | "recording" | "preview" | "processing" | "error";
 
@@ -22,23 +23,54 @@ export default function Home() {
   const [llmMode, setLlmMode] = useState<"disabled" | "per-sentence" | "per-text">("per-sentence");
   const [sessionResults, setSessionResults] = useState<SessionEntry[]>([]);
   const [sentenceAudioUrls, setSentenceAudioUrls] = useState<Record<number, string>>({});
+  const [showPhonemes, setShowPhonemes] = useState(false);
+  const [previewPhonemes, setPreviewPhonemes] = useState<Record<string, string[]>>({});
+  const [showIPA, setShowIPA] = useState(false);
+  // user edits to individual sentence rows (keyed by sentence index)
+  const [sentenceOverrides, setSentenceOverrides] = useState<Record<number, string>>({});
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  // Always-current ref to audioUrl — used only for unmount cleanup so we never
+  // accidentally revoke a URL that was just saved to sentenceAudioUrls.
+  const audioUrlRef = useRef<string | null>(null);
+  useEffect(() => { audioUrlRef.current = audioUrl; }, [audioUrl]);
 
-  // revoke object URL on unmount
-  useEffect(() => {
-    return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-    };
-  }, [audioUrl]);
+  // Revoke the preview URL only when the page actually unmounts, not on every
+  // state change. resetToIdle() already revokes before any new recording starts.
+  useEffect(() => () => { if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current); }, []);
 
   // revoke stored sentence audio URLs on unmount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => { Object.values(sentenceAudioUrls).forEach((u) => URL.revokeObjectURL(u)); }, []);
 
+  // fetch phonemes whenever showPhonemes is on and sentences (including inline edits) change
+  useEffect(() => {
+    if (!showPhonemes) {
+      setPreviewPhonemes({});
+      return;
+    }
+    const baseSentences = splitSentences(text.trim());
+    const effective = baseSentences.map((s, i) => sentenceOverrides[i] ?? s);
+    const allSentences = mode === "free" ? effective : parseBilingualText(bilingualText).map((p) => p.english);
+    const rawWords = allSentences.flatMap((s) =>
+      s.toLowerCase().replace(/[^a-z'\s]/g, "").split(/\s+/).filter(Boolean)
+    );
+    const unique = Array.from(new Set(rawWords));
+    if (unique.length === 0) {
+      setPreviewPhonemes({});
+      return;
+    }
+    getPhonemes(unique)
+      .then(setPreviewPhonemes)
+      .catch(() => { /* silently ignore — phonemes are enhancement only */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPhonemes, text, bilingualText, mode, sentenceOverrides]);
+
   const sentences = splitSentences(text.trim());
-  const freeSentence = selectedIdx !== null ? (sentences[selectedIdx] ?? null) : null;
+  // Apply any per-row user edits on top of the parsed sentences
+  const effectiveSentences = sentences.map((s, i) => sentenceOverrides[i] ?? s);
+  const freeSentence = selectedIdx !== null ? (effectiveSentences[selectedIdx] ?? null) : null;
 
   const pairs = parseBilingualText(bilingualText);
   const bilingualSentence = selectedPairIdx !== null ? (pairs[selectedPairIdx]?.english ?? null) : null;
@@ -59,6 +91,8 @@ export default function Home() {
     setSelectedPairIdx(null);
     setSentenceResults({});
     setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
+    setPreviewPhonemes({});
+    setSentenceOverrides({});
     resetToIdle();
   }
 
@@ -154,155 +188,191 @@ export default function Home() {
     resetToIdle();
   }
 
+  function editSentence(idx: number, newText: string) {
+    setSentenceOverrides((prev) => ({ ...prev, [idx]: newText }));
+    // clear only this sentence's result so other sentences are unaffected
+    setSentenceResults((prev) => { const u = { ...prev }; delete u[idx]; return u; });
+    setSentenceAudioUrls((prev) => {
+      if (prev[idx]) URL.revokeObjectURL(prev[idx]);
+      const u = { ...prev }; delete u[idx]; return u;
+    });
+    if (selectedIdx === idx) resetToIdle();
+  }
+
+  function removeSessionEntry(idx: number) {
+    setSessionResults((prev) => prev.filter((_, i) => i !== idx));
+  }
+
   const isRecording = status === "recording";
   const isProcessing = status === "processing";
   const isPreview = status === "preview";
   const isAnyBusy = isRecording || isProcessing || isPreview;
 
   return (
-    <main className="max-w-2xl mx-auto p-8 space-y-6">
-      <h1 className="text-2xl font-bold">Read &amp; Improve</h1>
+    <div className={showIPA ? "flex justify-center gap-6 px-4" : ""}>
+      <main className="max-w-2xl w-full mx-auto p-8 space-y-6">
+        <h1 className="text-2xl font-bold">Read &amp; Improve</h1>
 
-      {/* Input mode tabs */}
-      <div className="flex gap-1 rounded-lg bg-gray-100 p-1 w-fit">
-        <button
-          onClick={() => switchMode("free")}
-          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "free" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
-            }`}
-        >
-          Free Text
-        </button>
-        <button
-          onClick={() => switchMode("bilingual")}
-          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "bilingual" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
-            }`}
-        >
-          ES → EN Sentences
-        </button>
-      </div>
-
-      {/* LLM mode selector */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-gray-500 font-medium">LLM feedback:</span>
-        <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-          {(["disabled", "per-sentence", "per-text"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setLlmMode(m)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${llmMode === m
-                ? "bg-white shadow text-gray-900"
-                : "text-gray-500 hover:text-gray-700"
-                }`}
-            >
-              {m === "disabled" ? "Disabled" : m === "per-sentence" ? "Per sentence" : "Per text"}
-            </button>
-          ))}
+        {/* Input mode tabs */}
+        <div className="flex gap-1 rounded-lg bg-gray-100 p-1 w-fit">
+          <button
+            onClick={() => switchMode("free")}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "free" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            Free Text
+          </button>
+          <button
+            onClick={() => switchMode("bilingual")}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "bilingual" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"
+              }`}
+          >
+            ES → EN Sentences
+          </button>
         </div>
-      </div>
 
-      {/* Free Text mode */}
-      {mode === "free" && (
-        <>
-          {/* textarea + char counter */}
-          <div className="space-y-1">
-            <label htmlFor="text-input" className="block font-medium">
-              Text to practise
-            </label>
-            <textarea
-              id="text-input"
-              className="w-full border rounded p-2 font-mono text-sm text-gray-900 bg-white border-gray-300"
-              rows={3}
-              placeholder="Type one or more sentences here…"
-              value={text}
-              onChange={(e) => {
-                setText(e.target.value);
-                setSelectedIdx(null);
-                setSentenceResults({});
-                setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
-                resetToIdle();
-              }}
-              disabled={isRecording || isProcessing}
-            />
+        {/* LLM mode selector */}
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm text-gray-500 font-medium">LLM feedback:</span>
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+            {(["disabled", "per-sentence", "per-text"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setLlmMode(m)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${llmMode === m
+                  ? "bg-white shadow text-gray-900"
+                  : "text-gray-500 hover:text-gray-700"
+                  }`}
+              >
+                {m === "disabled" ? "Disabled" : m === "per-sentence" ? "Per sentence" : "Per text"}
+              </button>
+            ))}
           </div>
 
-          {/* sentence list */}
-          {text.trim().length > 0 && (
+          {/* Phoneme preview toggle */}
+          <button
+            onClick={() => setShowPhonemes((v) => !v)}
+            className={`px-3 py-1 rounded-md text-xs font-medium border transition-colors ${showPhonemes
+              ? "bg-indigo-600 text-white border-indigo-600"
+              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              }`}
+          >
+            {showPhonemes ? "Hide phonemes" : "Show phonemes"}
+          </button>
+
+          <IPAReference active={showIPA} onToggle={() => setShowIPA((v) => !v)} />
+        </div>
+
+        {/* Free Text mode */}
+        {mode === "free" && (
+          <>
+            {/* textarea + char counter */}
             <div className="space-y-1">
-              <SentenceList
-                sentences={sentences}
-                selected={selectedIdx}
-                status={status}
-                audioUrl={audioUrl}
-                sentenceAudioUrls={sentenceAudioUrls}
-                results={sentenceResults}
-                isAnyBusy={isAnyBusy}
-                onRecord={startRecording}
-                onStop={stopRecording}
-                onSend={sendAudio}
-                onReRecord={reRecordSentence}
+              <label htmlFor="text-input" className="block font-medium">
+                Text to practise
+              </label>
+              <textarea
+                id="text-input"
+                className="w-full border rounded p-2 font-mono text-sm text-gray-900 bg-white border-gray-300"
+                rows={3}
+                placeholder="Type one or more sentences here…"
+                value={text}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setSelectedIdx(null);
+                  setSentenceResults({});
+                  setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
+                  setSentenceOverrides({});
+                  resetToIdle();
+                }}
+                disabled={isRecording || isProcessing}
               />
             </div>
-          )}
-        </>
-      )}
 
-      {/* Bilingual mode */}
-      {mode === "bilingual" && (
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <label htmlFor="bilingual-input" className="block font-medium">
-              Paste Spanish–English sentence pairs
-            </label>
-            <textarea
-              id="bilingual-input"
-              className="w-full border rounded p-2 font-mono text-sm text-gray-900 bg-white border-gray-300"
-              rows={6}
-              placeholder={`Iré a Madrid la semana que viene. I will go to Madrid next week.\n2 Él comerá con nosotros. He'll have lunch with us.`}
-              value={bilingualText}
-              onChange={(e) => {
-                setBilingualText(e.target.value);
-                setSelectedPairIdx(null);
-                setSentenceResults({});
-                setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
-                resetToIdle();
-              }}
-              disabled={isRecording || isProcessing}
-            />
+            {/* sentence list */}
+            {text.trim().length > 0 && (
+              <div className="space-y-1">
+                <SentenceList
+                  sentences={effectiveSentences}
+                  selected={selectedIdx}
+                  status={status}
+                  audioUrl={audioUrl}
+                  sentenceAudioUrls={sentenceAudioUrls}
+                  results={sentenceResults}
+                  isAnyBusy={isAnyBusy}
+                  previewPhonemes={showPhonemes ? previewPhonemes : {}}
+                  onRecord={startRecording}
+                  onStop={stopRecording}
+                  onSend={sendAudio}
+                  onReRecord={reRecordSentence}
+                  onEditSentence={editSentence}
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Bilingual mode */}
+        {mode === "bilingual" && (
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <label htmlFor="bilingual-input" className="block font-medium">
+                Paste Spanish–English sentence pairs
+              </label>
+              <textarea
+                id="bilingual-input"
+                className="w-full border rounded p-2 font-mono text-sm text-gray-900 bg-white border-gray-300"
+                rows={6}
+                placeholder={`Iré a Madrid la semana que viene. I will go to Madrid next week.\n2 Él comerá con nosotros. He'll have lunch with us.`}
+                value={bilingualText}
+                onChange={(e) => {
+                  setBilingualText(e.target.value);
+                  setSelectedPairIdx(null);
+                  setSentenceResults({});
+                  setSentenceAudioUrls((prev) => { Object.values(prev).forEach((u) => URL.revokeObjectURL(u)); return {}; });
+                  resetToIdle();
+                }}
+                disabled={isRecording || isProcessing}
+              />
+            </div>
+            {pairs.length > 0 && (
+              <div className="space-y-1">
+                <BilingualSentenceList
+                  pairs={pairs}
+                  selected={selectedPairIdx}
+                  status={status}
+                  audioUrl={audioUrl}
+                  sentenceAudioUrls={sentenceAudioUrls}
+                  results={sentenceResults}
+                  isAnyBusy={isAnyBusy}
+                  previewPhonemes={showPhonemes ? previewPhonemes : {}}
+                  onRecord={startRecording}
+                  onStop={stopRecording}
+                  onSend={sendAudio}
+                  onReRecord={reRecordSentence}
+                />
+              </div>
+            )}
           </div>
-          {pairs.length > 0 && (
-            <div className="space-y-1">
-              <BilingualSentenceList
-                pairs={pairs}
-                selected={selectedPairIdx}
-                status={status}
-                audioUrl={audioUrl}
-                sentenceAudioUrls={sentenceAudioUrls}
-                results={sentenceResults}
-                isAnyBusy={isAnyBusy}
-                onRecord={startRecording}
-                onStop={stopRecording}
-                onSend={sendAudio}
-                onReRecord={reRecordSentence}
-              />
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
-      {/* error message */}
-      {errorMsg && (
-        <div className="border border-red-300 bg-red-50 text-red-700 rounded p-3 text-sm">
-          {errorMsg}
-        </div>
-      )}
+        {/* error message */}
+        {errorMsg && (
+          <div className="border border-red-300 bg-red-50 text-red-700 rounded p-3 text-sm">
+            {errorMsg}
+          </div>
+        )}
 
-      {/* session panel for per-text mode */}
-      {llmMode === "per-text" && (
-        <SessionPanel
-          entries={sessionResults}
-          onClear={() => setSessionResults([])}
-        />
-      )}
-    </main>
+        {/* session panel for per-text mode */}
+        {llmMode === "per-text" && (
+          <SessionPanel
+            entries={sessionResults}
+            onClear={() => setSessionResults([])}
+            onRemoveEntry={removeSessionEntry}
+          />
+        )}
+      </main>
+      {showIPA && <IPAReferencePanel />}
+    </div>
   );
 }

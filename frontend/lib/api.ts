@@ -26,13 +26,29 @@ export interface FeedbackSentenceIn {
   words: WordOut[];
 }
 
+export async function getPhonemes(
+  words: string[],
+): Promise<Record<string, string[]>> {
+  const res = await fetch(`${API_URL}/phonemes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ words }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data.phonemes as Record<string, string[]>;
+}
+
 export async function feedbackBatch(
   sentences: FeedbackSentenceIn[],
+  maxSuggestions?: number,
 ): Promise<string[]> {
+  const body: Record<string, unknown> = { sentences };
+  if (maxSuggestions !== undefined) body.max_suggestions = maxSuggestions;
   const res = await fetch(`${API_URL}/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sentences }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

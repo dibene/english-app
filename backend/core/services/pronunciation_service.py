@@ -14,6 +14,51 @@ from core.models.diff import DiffEntry, DiffResult
 from core.models.transcription import PhonemeScore as PhonemeScoreModel
 from core.services.text_comparison import TextComparisonEngine
 
+# Phoneme score below which an otherwise-ok word is still sent to the LLM.
+_PHONEME_WEAK_THRESHOLD = 60
+
+# Suggestion count ranges keyed by number of sentences in the session.
+_SUGGESTION_RANGES: list[tuple[int, tuple[int, int]]] = [
+    (16, (4, 7)),  # 16+ sentences → 4-7 suggestions
+    (6, (3, 5)),  # 6–15 sentences → 3-5 suggestions
+    (2, (2, 4)),  # 2–5 sentences  → 2-4 suggestions
+    (0, (1, 3)),  # 1 sentence     → 1-3 suggestions
+]
+
+
+def _suggestion_range(n_sentences: int) -> tuple[int, int]:
+    """Return (min, max) suggestion count for a session of n_sentences."""
+    for threshold, range_ in _SUGGESTION_RANGES:
+        if n_sentences >= threshold:
+            return range_
+    return (1, 3)
+
+
+def _filter_entries_for_llm(entries: list[DiffEntry]) -> list[DiffEntry]:
+    """Keep only entries that carry a useful coaching signal.
+
+    Included:
+    - Any word with status != 'ok'  (missing, inserted, mispronounced)
+    - 'ok' words where at least one phoneme score is below the weak threshold
+
+    Excluded:
+    - 'ok' words where all phoneme scores are >= threshold, or no phoneme data
+
+    This typically reduces a 25-sentence session from ~400 tokens of word data
+    to ~50-100 tokens, focusing the LLM entirely on problem areas.
+    """
+    filtered: list[DiffEntry] = []
+    for entry in entries:
+        if entry.status != "ok":
+            filtered.append(entry)
+            continue
+        if entry.phoneme_scores and any(
+            ps.score < _PHONEME_WEAK_THRESHOLD for ps in entry.phoneme_scores
+        ):
+            filtered.append(entry)
+    return filtered
+
+
 # LLM skip thresholds (future use):
 # Skip LLM feedback when accuracy_score >= this value AND no phoneme has a low score.
 _LLM_SKIP_ACCURACY_THRESHOLD = 80
@@ -97,26 +142,33 @@ class PronunciationService:
                 "suggestions": [],
             }
 
-        feedback = self._llm_provider.generate_feedback(expected_text, diff_result)
+        filtered_diff = DiffResult(entries=_filter_entries_for_llm(diff_result.entries))
+        feedback = self._llm_provider.generate_feedback(
+            expected_text, filtered_diff, n_suggestions_range=(1, 3)
+        )
         return {
             "score": int(result.accuracy_score),
             "words": words,
             "suggestions": feedback.get("suggestions", []),
         }
 
-    def generate_feedback_for_session(self, sentences: list[Any]) -> list[str]:
+    def generate_feedback_for_session(
+        self, sentences: list[Any], max_suggestions: int | None = None
+    ) -> list[str]:
         """Generate LLM suggestions from a list of pre-computed sentence results.
 
-        The frontend accumulates per-sentence AnalyzeResponse results (fast, no-LLM
-        calls) and then calls this once to get coaching tips across the whole session.
-        All sentence context is sent to the LLM in a single request.
+        The prompt is automatically optimised:
+        - Only error words and words with weak phonemes (< 60) are sent to the LLM.
+        - For large sessions (>= 40 filtered entries) an aggregated phoneme-frequency
+          summary replaces the word-by-word listing to stay under token limits.
+        - The suggestion count range scales with session size unless overridden.
 
         Args:
-            sentences: List of FeedbackSentenceIn-compatible objects with fields:
-                expected_text (str), score (int), words (list with status/phoneme_scores).
+            sentences: List of FeedbackSentenceIn-compatible objects.
+            max_suggestions: When set, caps the upper bound of the suggestion count.
 
         Returns:
-            list[str]: 1-5 coaching suggestions covering the full session.
+            list[str]: coaching suggestions covering the full session.
 
         Raises:
             RuntimeError: If LLM is disabled server-side.
@@ -154,7 +206,13 @@ class PronunciationService:
                 )
 
         combined_text = " / ".join(expected_texts)
-        combined_diff = DiffResult(entries=all_entries)
-        feedback = self._llm_provider.generate_feedback(combined_text, combined_diff)
+        filtered_entries = _filter_entries_for_llm(all_entries)
+        combined_diff = DiffResult(entries=filtered_entries)
+        min_s, max_s = _suggestion_range(len(sentences))
+        if max_suggestions is not None:
+            max_s = max(min_s, max_suggestions)
+        feedback = self._llm_provider.generate_feedback(
+            combined_text, combined_diff, n_suggestions_range=(min_s, max_s)
+        )
         suggestions: list[str] = feedback.get("suggestions", [])
         return suggestions

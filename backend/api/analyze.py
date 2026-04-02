@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from api.dependencies import get_pronunciation_service
 from core.exceptions import LLMFeedbackError, PronunciationError
 from core.services.pronunciation_service import PronunciationService
+from core.services.text_comparison import get_phonemes_for_words
 
 router = APIRouter()
 
@@ -64,10 +65,36 @@ class FeedbackSentenceIn(BaseModel):
 
 class FeedbackRequest(BaseModel):
     sentences: list[FeedbackSentenceIn]
+    max_suggestions: int | None = None  # overrides server-side scaling when set
 
 
 class FeedbackResponse(BaseModel):
     suggestions: list[str]
+
+
+class PhonemeRequest(BaseModel):
+    words: list[str]
+
+
+class PhonemeResponse(BaseModel):
+    phonemes: dict[str, list[str]]
+
+
+@router.post("/phonemes", response_model=PhonemeResponse)
+async def phonemes(request: PhonemeRequest) -> PhonemeResponse:
+    """Return IPA phonemes for a list of words from CMUdict.
+
+    Words not found in CMUdict are omitted from the response.
+    Duplicate words are deduplicated before lookup.
+
+    Args:
+        request: PhonemeRequest with a list of words.
+
+    Returns:
+        PhonemeResponse mapping each recognised word to its IPA phoneme list.
+    """
+    result = get_phonemes_for_words(request.words)
+    return PhonemeResponse(phonemes=result)
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
@@ -177,7 +204,11 @@ async def feedback(
 
     try:
         suggestions: list[str] = await asyncio.wait_for(
-            asyncio.to_thread(service.generate_feedback_for_session, request.sentences),
+            asyncio.to_thread(
+                service.generate_feedback_for_session,
+                request.sentences,
+                request.max_suggestions,
+            ),
             timeout=_ANALYZE_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:

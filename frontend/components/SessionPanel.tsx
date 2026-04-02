@@ -11,6 +11,7 @@ export interface SessionEntry {
 interface SessionPanelProps {
     entries: SessionEntry[];
     onClear: () => void;
+    onRemoveEntry: (index: number) => void;
 }
 
 function scoreColour(n: number): string {
@@ -19,12 +20,13 @@ function scoreColour(n: number): string {
     return "text-red-700 bg-red-100 border-red-300";
 }
 
-export default function SessionPanel({ entries, onClear }: SessionPanelProps) {
+export default function SessionPanel({ entries, onClear, onRemoveEntry }: SessionPanelProps) {
     const [showJson, setShowJson] = useState(false);
     const [llmSuggestions, setLlmSuggestions] = useState<string[] | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analyzeError, setAnalyzeError] = useState<string | null>(null);
-    const [copied, setCopied] = useState(false);
+    const [copiedJson, setCopiedJson] = useState(false);
+    const [copiedLlm, setCopiedLlm] = useState(false);
 
     if (entries.length === 0) return null;
 
@@ -36,10 +38,45 @@ export default function SessionPanel({ entries, onClear }: SessionPanelProps) {
 
     const jsonStr = JSON.stringify({ sentences: feedbackData }, null, 2);
 
+    /** Compact summary suitable for pasting into an external LLM. */
+    function buildLlmSummary(): string {
+        const lines: string[] = [
+            "Pronunciation session summary for an English coach AI:",
+            "",
+        ];
+        for (const e of entries) {
+            const { score, words } = e.result;
+            const problems = words
+                .filter((w) => w.status === "mispronounced" || w.status === "missing")
+                .map((w) => {
+                    const word = w.expected_word ?? w.spoken_word ?? "?";
+                    const weak = (w.phoneme_scores ?? [])
+                        .filter((ps) => ps.score < 70)
+                        .map((ps) => `${ps.phoneme}(${Math.round(ps.score)})`)
+                        .join(", ");
+                    return weak ? `${word}[${weak}]` : word;
+                })
+                .join(", ");
+            lines.push(
+                `• "${e.sentence}" — score ${score}/100` +
+                (problems ? ` — weak: ${problems}` : " — no errors"),
+            );
+        }
+        lines.push("", "Please give 3-5 concise pronunciation tips targeting the weakest phonemes above.");
+        return lines.join("\n");
+    }
+
     function copyJson() {
         navigator.clipboard.writeText(jsonStr).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            setCopiedJson(true);
+            setTimeout(() => setCopiedJson(false), 2000);
+        });
+    }
+
+    function copyLlmSummary() {
+        navigator.clipboard.writeText(buildLlmSummary()).then(() => {
+            setCopiedLlm(true);
+            setTimeout(() => setCopiedLlm(false), 2000);
         });
     }
 
@@ -48,7 +85,9 @@ export default function SessionPanel({ entries, onClear }: SessionPanelProps) {
         setAnalyzeError(null);
         setLlmSuggestions(null);
         try {
-            const suggestions = await feedbackBatch(feedbackData);
+            const n = entries.length;
+            const maxSuggestions = n >= 16 ? 7 : n >= 6 ? 5 : n >= 2 ? 4 : 3;
+            const suggestions = await feedbackBatch(feedbackData, maxSuggestions);
             setLlmSuggestions(suggestions);
         } catch (err) {
             setAnalyzeError(err instanceof Error ? err.message : "LLM request failed.");
@@ -80,7 +119,15 @@ export default function SessionPanel({ entries, onClear }: SessionPanelProps) {
                         >
                             {entry.result.score}
                         </span>
-                        <span className="text-gray-700">{entry.sentence}</span>
+                        <span className="flex-1 text-gray-700">{entry.sentence}</span>
+                        <button
+                            onClick={() => onRemoveEntry(i)}
+                            title="Remove this result"
+                            className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors leading-none"
+                            aria-label="Remove result"
+                        >
+                            ×
+                        </button>
                     </li>
                 ))}
             </ol>
@@ -97,7 +144,13 @@ export default function SessionPanel({ entries, onClear }: SessionPanelProps) {
                     onClick={copyJson}
                     className="px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
                 >
-                    {copied ? "Copied!" : "Copy JSON"}
+                    {copiedJson ? "Copied!" : "Copy JSON"}
+                </button>
+                <button
+                    onClick={copyLlmSummary}
+                    className="px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                    {copiedLlm ? "Copied!" : "Copy for LLM"}
                 </button>
                 <button
                     onClick={analyzeWithLlm}

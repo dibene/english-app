@@ -161,6 +161,48 @@ def test_assess_word_has_error_type(provider: AzurePronunciationProvider) -> Non
     assert result.words[0].error_type == "Mispronunciation"
 
 
+def test_phantom_insertion_duplicate_is_discarded(provider: AzurePronunciationProvider) -> None:
+    """Azure with enable_miscue=True can emit a word twice: first with its real ErrorType,
+    then again with ErrorType='Insertion' as an alignment artefact.  The second entry must
+    be silently dropped while the first (real) assessment is preserved.
+
+    Reproduces the confirmed bug: "I mostly use Python, Docker, and AWS." returned Azure
+    words [mostly/Mispronunciation, ..., mostly/Insertion, use/Insertion] where the last
+    two were phantom duplicates, not words the user actually said twice.
+    """
+    words = [
+        _make_word("i", 95.0, "None", []),
+        _make_word("mostly", 55.0, "Mispronunciation", []),  # real assessment
+        _make_word("use", 90.0, "None", []),
+        _make_word("python", 92.0, "None", []),
+        _make_word("mostly", 0.0, "Insertion", []),  # phantom duplicate → discard
+        _make_word("use", 0.0, "Insertion", []),  # phantom duplicate → discard
+    ]
+    sdk_result = _make_sdk_result(json_str=_make_json_result(words))
+    result = provider._parse_words(sdk_result)
+
+    assert len(result) == 4
+    assert [w.word for w in result] == ["i", "mostly", "use", "python"]
+    # The original Mispronunciation assessment must not be overwritten
+    assert result[1].error_type == "Mispronunciation"
+
+
+def test_genuine_insertion_is_kept(provider: AzurePronunciationProvider) -> None:
+    """A word the user added that is not in the reference text appears only once in
+    Azure's output with ErrorType='Insertion'.  It must not be discarded."""
+    words = [
+        _make_word("hello", 95.0, "None", []),
+        _make_word("extra", 80.0, "Insertion", []),  # genuinely inserted, never seen before
+        _make_word("world", 85.0, "None", []),
+    ]
+    sdk_result = _make_sdk_result(json_str=_make_json_result(words))
+    result = provider._parse_words(sdk_result)
+
+    assert len(result) == 3
+    assert result[1].word == "extra"
+    assert result[1].error_type == "Insertion"
+
+
 def test_assess_word_has_phoneme_scores(provider: AzurePronunciationProvider) -> None:
     phonemes = [_make_phoneme("w", 80.0), _make_phoneme("er", 45.0), _make_phoneme("l", 90.0)]
     words = [_make_word("world", 70.0, "Mispronunciation", phonemes)]

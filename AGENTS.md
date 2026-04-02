@@ -40,6 +40,7 @@ Use the appropriate skill for structured multi-step operations:
 
 | Skill | When to Use |
 |-------|-------------|
+| [investigate](skills/investigate/investigate.md) | Bug reports, research questions, debugging, "why/how/what" — **research → plan → approval → implement** |
 | [ship_feature](skills/features/ship_feature.md) | Work on a new feature from the backlog (worktree → research → plan → implement → PR) |
 | [iterate_feature_pr](skills/features/iterate_feature_pr.md) | Apply changes to an existing open PR based on review feedback or new instructions |
 | [GitHub PR with `gh` CLI](skills/git-usage/pr.md) | Create, edit, and manage PRs — **read before any `gh` command** |

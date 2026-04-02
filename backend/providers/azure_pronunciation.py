@@ -145,7 +145,31 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
         )
 
     def _parse_words(self, raw_result: speechsdk.SpeechRecognitionResult) -> list[WordResult]:
-        """Parse per-word and per-phoneme detail from the raw JSON result."""
+        """Parse per-word and per-phoneme detail from the raw JSON result.
+
+        Azure behaviour with ``enable_miscue=True``
+        -------------------------------------------
+        When miscue detection is enabled, Azure runs its own alignment pass over the
+        reference text.  A side-effect of this pass is that some words appear *twice*
+        in the ``Words`` array:
+
+        1. First occurrence — the real assessment, with the actual ``ErrorType``
+           (e.g. ``"None"`` for a correct word, ``"Mispronunciation"`` for a bad one).
+        2. Second occurrence — a phantom duplicate with ``ErrorType: "Insertion"``
+           injected by Azure's alignment algorithm.
+
+        These phantom insertions must not be confused with *genuine* insertions (words
+        the user added that are not in the reference text at all).  Genuine insertions
+        appear only once in the list, without a prior occurrence under a different
+        error type.
+
+        Deduplication strategy
+        ----------------------
+        We track every word (lowercased) that has already been emitted.  When we
+        encounter an ``"Insertion"`` entry whose word was already seen, we discard it
+        as a phantom.  If it is a brand-new word (not in ``seen_words``), we keep it
+        as a real user insertion.
+        """
         try:
             detail = json.loads(
                 raw_result.properties.get(
@@ -160,10 +184,26 @@ class AzurePronunciationProvider(PronunciationAssessmentProvider):
             return []
 
         words_data = nbes[0].get("Words", [])
+
         words: list[WordResult] = []
+        # Tracks lowercase word strings already emitted so we can identify
+        # phantom Insertion duplicates (see docstring above).
+        seen_words: set[str] = set()
 
         for w in words_data:
             pa = w.get("PronunciationAssessment", {})
+            word_key = w.get("Word", "").lower()
+            error_type = pa.get("ErrorType", "None")
+
+            # Phantom-insertion guard: Azure sometimes appends a duplicate
+            # "Insertion" entry for a word that was already assessed correctly.
+            # We skip such duplicates but keep genuine insertions (words the
+            # user added that have not appeared before in this result).
+            if error_type == "Insertion" and word_key in seen_words:
+                continue
+
+            seen_words.add(word_key)
+
             phonemes_data = w.get("Phonemes", [])
 
             phoneme_scores: list[PhonemeScore] = [
